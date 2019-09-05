@@ -19,7 +19,8 @@ import Data.NameMap
 
 import public Utils.Binary
 
-import Data.Buffer
+import IdrisJvm.IO
+import IdrisJvm.Data.Buffer
 
 %default covering
 

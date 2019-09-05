@@ -1,4 +1,4 @@
-printLength : IO ()
+printLength : JVM_IO ()
 printLength = putStr "Input string: " >>= \_ =>
               getLine >>= \input =>
               let len = length input in

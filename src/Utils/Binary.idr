@@ -3,17 +3,22 @@ module Utils.Binary
 import Core.Core
 import Core.Name
 
-import Data.Buffer
 import public Data.IOArray
 import Data.List
 import Data.Vect
-
+import IdrisJvm.Data.Buffer
+import IdrisJvm.IO
+import IdrisJvm.File
 
 -- Serialising data as binary. Provides an interface TTC which allows
 -- reading and writing to chunks of memory, "Binary", which can be written
 -- to and read from files.
 
 %default covering
+
+%hide Prelude.File.File
+%hide Prelude.File.FileError
+%hide Prelude.File.openFile
 
 -- A label for binary states
 export
@@ -49,7 +54,7 @@ appended i (MkBin b loc s used) = MkBin b (loc+i) s (used + i)
 incLoc : Int -> Binary -> Binary
 incLoc i c = record { loc $= (+i) } c
 
-dumpBin : Binary -> IO ()
+dumpBin : Binary -> JVM_IO ()
 dumpBin chunk
    = do -- printLn !(traverse bufferData (map buf done))
         printLn !(bufferData (buf chunk))
@@ -59,13 +64,13 @@ nonEmptyRev : NonEmpty (xs ++ y :: ys)
 nonEmptyRev {xs = []} = IsNonEmpty
 nonEmptyRev {xs = (x :: xs)} = IsNonEmpty
 
-fromBuffer : Buffer -> IO Binary
+fromBuffer : Buffer -> JVM_IO Binary
 fromBuffer buf
     = do len <- rawSize buf
          pure (MkBin buf 0 len len)
 
 export
-writeToFile : (fname : String) -> Binary -> IO (Either FileError ())
+writeToFile : (fname : String) -> Binary -> JVM_IO (Either FileError ())
 writeToFile fname c
     = do Right h <- openFile fname WriteTruncate
                | Left err => pure (Left err)
@@ -74,7 +79,7 @@ writeToFile fname c
          pure (Right ())
 
 export
-readFromFile : (fname : String) -> IO (Either FileError Binary)
+readFromFile : (fname : String) -> JVM_IO (Either FileError Binary)
 readFromFile fname
     = do Right h <- openFile fname Read
                | Left err => pure (Left err)

@@ -1117,15 +1117,15 @@ Show a => Show (Maybe a) where
   showPrec d (Just x) = showCon d "Just" (showArg x)
 
 --------
--- IO --
+-- JVM_IO --
 --------
 
 public export
-Functor IO where
+Functor JVM_IO where
   map f io = io_bind io (\b => io_pure (f b))
 
 public export
-Applicative IO where
+Applicative JVM_IO where
   pure x = io_pure x
   f <*> a
       = io_bind f (\f' =>
@@ -1133,15 +1133,15 @@ Applicative IO where
             io_pure (f' a')))
 
 public export
-Monad IO where
+Monad JVM_IO where
   b >>= k = io_bind b k
 
 export
-print : Show a => a -> IO ()
+print : Show a => a -> JVM_IO ()
 print x = putStr $ show x
 
 export
-printLn : Show a => a -> IO ()
+printLn : Show a => a -> JVM_IO ()
 printLn x = putStrLn $ show x
 
 -----------------------

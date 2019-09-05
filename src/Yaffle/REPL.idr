@@ -25,6 +25,8 @@ import Parser.Support
 
 import Control.Catchable
 
+import IdrisJvm.IO
+
 %default covering
 
 showInfo : (Name, Int, GlobalDef) -> Core ()

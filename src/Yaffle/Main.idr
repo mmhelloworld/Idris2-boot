@@ -20,7 +20,8 @@ import TTImp.TTImp
 
 import Yaffle.REPL
 
-import System
+import IdrisJvm.IO
+import IdrisJvm.System
 
 usage : String
 usage = "Usage: yaffle <input file> [--timing]"
@@ -62,7 +63,7 @@ yaffleMain fname args
          repl {c} {u}
 
 {-
-main : IO ()
+main : JVM_IO ()
 main
     = do (_ :: fname :: rest) <- getArgs
              | _ => do putStrLn usage

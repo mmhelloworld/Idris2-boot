@@ -1,5 +1,9 @@
 module Data.IOArray
 
+import IdrisJvm.IO
+import Java.Lang
+import Java.Util
+
 %default total
 
 -- Raw access to IOArrays. This interface is unsafe because there's no
@@ -16,36 +20,28 @@ data IORawArray elem = MkIORawArray (ArrayData elem)
 ||| Create a new array of the given size, with all entries set to the
 ||| given default element.
 export
-newRawArray : Int -> elem -> IO (IORawArray elem)
-newRawArray size default
-    = do vm <- getMyVM
-         MkRaw p <- foreign FFI_C "idris_newArray"
-                          (Ptr -> Int -> Raw elem -> IO (Raw (ArrayData elem)))
-                          vm size (MkRaw default)
-         pure (MkIORawArray p)
+newRawArray : Int -> elem -> JVM_IO (IORawArray elem)
+newRawArray size default = do
+    arr <- listToArray $ replicate (cast size) (the Object $ believe_me default)
+    pure (MkIORawArray (believe_me arr))
 
 ||| Write an element at a location in an array.
 ||| There is *no* bounds checking, hence this is unsafe. Safe interfaces can
 ||| be implemented on top of this, either with a run time or compile time
 ||| check.
 export
-unsafeWriteArray : IORawArray elem -> Int -> elem -> IO ()
-unsafeWriteArray (MkIORawArray p) i val
-    = foreign FFI_C "idris_arraySet"
-                    (Raw (ArrayData elem) -> Int -> Raw elem -> IO ())
-                    (MkRaw p) i (MkRaw val)
+unsafeWriteArray : IORawArray elem -> Int -> elem -> JVM_IO ()
+unsafeWriteArray (MkIORawArray arr) i val
+    = assert_total $ setArray (JVM_Array Object -> Int -> Object -> JVM_IO ()) (believe_me arr) i (believe_me val)
 
 ||| Read the element at a location in an array.
 ||| There is *no* bounds checking, hence this is unsafe. Safe interfaces can
 ||| be implemented on top of this, either with a run time or compile time
 ||| check.
 export %inline
-unsafeReadArray : IORawArray elem -> Int -> IO elem
-unsafeReadArray (MkIORawArray p) i
-    = do MkRaw val <- foreign FFI_C "idris_arrayGet"
-                              (Raw (ArrayData elem) -> Int -> IO (Raw elem))
-                              (MkRaw p) i
-         pure val
+unsafeReadArray : IORawArray elem -> Int -> JVM_IO elem
+unsafeReadArray (MkIORawArray arr) i
+    = assert_total $ believe_me <$> getArray (JVM_Array Object -> Int -> JVM_IO Object) (believe_me arr) i
 
 -- As IORawArray, but wrapped in dynamic checks that elements exist and
 -- are in bounds
@@ -56,19 +52,19 @@ record IOArray elem where
   content : IORawArray (Maybe elem)
 
 export
-newArray : Int -> IO (IOArray elem)
+newArray : Int -> JVM_IO (IOArray elem)
 newArray size
     = pure (MkIOArray size !(newRawArray size Nothing))
 
 export
-writeArray : IOArray elem -> Int -> elem -> IO ()
+writeArray : IOArray elem -> Int -> elem -> JVM_IO ()
 writeArray arr pos el
     = if pos < 0 || pos >= max arr
          then pure ()
          else unsafeWriteArray (content arr) pos (Just el)
 
 export
-readArray : IOArray elem -> Int -> IO (Maybe elem)
+readArray : IOArray elem -> Int -> JVM_IO (Maybe elem)
 readArray arr pos
     = if pos < 0 || pos >= max arr
          then pure Nothing
@@ -77,7 +73,7 @@ readArray arr pos
 -- Make a new array of the given size with the elements copied from the
 -- other array
 export
-newArrayCopy : (newsize : Int) -> IOArray elem -> IO (IOArray elem)
+newArrayCopy : (newsize : Int) -> IOArray elem -> JVM_IO (IOArray elem)
 newArrayCopy newsize arr
     = do let newsize' = if newsize < max arr then max arr else newsize
          arr' <- newArray newsize'
@@ -86,7 +82,7 @@ newArrayCopy newsize arr
   where
     copyFrom : IORawArray (Maybe elem) ->
                IORawArray (Maybe elem) ->
-               Int -> IO ()
+               Int -> JVM_IO ()
     copyFrom old new pos
         = if pos < 0
              then pure ()
@@ -95,10 +91,10 @@ newArrayCopy newsize arr
                      assert_total (copyFrom old new (pos - 1))
 
 export
-toList : IOArray elem -> IO (List (Maybe elem))
+toList : IOArray elem -> JVM_IO (List (Maybe elem))
 toList arr = iter 0 (max arr) []
   where
-    iter : Int -> Int -> List (Maybe elem) -> IO (List (Maybe elem))
+    iter : Int -> Int -> List (Maybe elem) -> JVM_IO (List (Maybe elem))
     iter pos end acc
          = if pos >= end
               then pure (reverse acc)
@@ -106,13 +102,13 @@ toList arr = iter 0 (max arr) []
                       assert_total (iter (pos + 1) end (el :: acc))
 
 export
-fromList : List (Maybe elem) -> IO (IOArray elem)
+fromList : List (Maybe elem) -> JVM_IO (IOArray elem)
 fromList ns
     = do arr <- newArray (cast (length ns))
          addToArray 0 ns arr
          pure arr
   where
-    addToArray : Int -> List (Maybe elem) -> IOArray elem -> IO ()
+    addToArray : Int -> List (Maybe elem) -> IOArray elem -> JVM_IO ()
     addToArray loc [] arr = pure ()
     addToArray loc (Nothing :: ns) arr
         = assert_total (addToArray (loc + 1) ns arr)

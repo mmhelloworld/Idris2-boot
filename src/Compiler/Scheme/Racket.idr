@@ -17,14 +17,18 @@ import Data.Vect
 import System
 import System.Info
 
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
+
 %default covering
 
-findRacket : IO String
+findRacket : JVM_IO String
 findRacket =
   do env <- getEnv "RACKET"
      pure $ fromMaybe "/usr/bin/env -S racket" env
 
-findRacoExe : IO String
+findRacoExe : JVM_IO String
 findRacoExe =
   do env <- getEnv "RACKET_RACO"
      pure $ (fromMaybe "/usr/bin/env -S raco" env) ++ " exe"

@@ -4,6 +4,12 @@ import Core.Core
 import Core.Name
 import public Idris.REPLOpts
 
+import IdrisJvm.IO
+import IdrisJvm.File
+import Java.Lang
+
+%hide Prelude.File.File
+
 %default covering
 
 public export
@@ -173,12 +179,12 @@ export
 version : Int -> Int -> SExp
 version maj min = toSExp (SymbolAtom "protocol-version", maj, min)
 
-hex : File -> Int -> IO ()
-hex (FHandle h) num = foreign FFI_C "fprintf" (Ptr -> String -> Int -> IO ()) h "%06x" num
+hex : File -> Int -> JVM_IO ()
+hex file num = writeString file $
+    JavaString.format "%06x" !(listToArray [the Object $ believe_me $ JInteger.valueOf num])
 
-sendLine : File -> String -> IO ()
-sendLine (FHandle h) st =
-  map (const ()) (prim_fwrite h st)
+sendLine : File -> String -> JVM_IO ()
+sendLine file st = writeString file st
 
 export
 send : SExpable a => File -> a -> Core ()

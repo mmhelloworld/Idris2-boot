@@ -16,7 +16,7 @@ strangeId x = x
 strangeId' : {a : Type} -> a -> a
 strangeId' {a=Integer} x = x+1
 
-main : IO ()
+main : JVM_IO ()
 main = do printLn (foo Nat)
           printLn (foo (List Nat))
           printLn (foo (List Bar))

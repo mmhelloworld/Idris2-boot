@@ -1,6 +1,6 @@
 import Data.Vect
 
-test : Vect 33 Int -> IO Int
+test : Vect 33 Int -> JVM_IO Int
 test bytes_list = do
   let int1 = (index 0 bytes_list * 8) +
              (index 1 bytes_list * 4) +

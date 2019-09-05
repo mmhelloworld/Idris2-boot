@@ -11,6 +11,8 @@ import Idris.IDEMode.Commands
 import public Idris.REPLOpts
 import Idris.Syntax
 
+import IdrisJvm.IO
+import IdrisJvm.File
 
 -- Output informational messages, unless quiet flag is set
 export

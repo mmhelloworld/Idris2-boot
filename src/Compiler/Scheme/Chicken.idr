@@ -18,14 +18,18 @@ import Data.Vect
 import System
 import System.Info
 
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
+
 %default covering
 
-findCSI : IO String
+findCSI : JVM_IO String
 findCSI =
   do env <- getEnv "CHICKEN_CSI"
      pure $ fromMaybe "/usr/bin/env -S csi" env
 
-findCSC : IO String
+findCSC : JVM_IO String
 findCSC =
   do env <- getEnv "CHICKEN_CSC"
      pure $ fromMaybe "/usr/bin/env -S csc" env

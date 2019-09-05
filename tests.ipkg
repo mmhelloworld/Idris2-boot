@@ -1,11 +1,11 @@
 package runtests
 
-pkgs = contrib
+pkgs = contrib, idrisjvmffi
 
 sourcedir = tests
 executable = runtests
 
-opts = "--warnreach --partial-eval"
+opts = "--warnreach --partial-eval --portable-codegen jvm"
 
 main = Main
 

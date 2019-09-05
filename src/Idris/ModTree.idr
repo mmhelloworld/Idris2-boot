@@ -17,6 +17,9 @@ import Idris.ProcessIdr
 import Idris.REPLCommon
 import Idris.Syntax
 
+import IdrisJvm.IO
+import IdrisJvm.File
+
 %default covering
 
 record ModTree where

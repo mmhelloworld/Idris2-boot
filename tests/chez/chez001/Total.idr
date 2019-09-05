@@ -26,5 +26,5 @@ doubleInt = Get (\x => Put (the Integer (cast x))
 countStream : Nat -> Stream Nat
 countStream x = x :: countStream (x + 1)
 
-main : IO ()
+main : JVM_IO ()
 main = printLn (take 10 (process doubleInt (countStream 1)))

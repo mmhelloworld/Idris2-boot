@@ -1,4 +1,4 @@
 module Main
 
-main : IO ()
+main : JVM_IO ()
 main = putStrLn (?convert 'x')

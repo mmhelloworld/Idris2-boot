@@ -24,11 +24,11 @@ data SockaddrPtr = SAPtr AnyPtr
 -- ---------------------------------------------------------- [ Socket Utilies ]
 
 ||| Frees a given pointer
-sock_free : BufPtr -> IO ()
+sock_free : BufPtr -> JVM_IO ()
 sock_free (BPtr ptr) = cCall () "idrnet_free" [ptr]
 
 export
-sockaddr_free : SockaddrPtr -> IO ()
+sockaddr_free : SockaddrPtr -> JVM_IO ()
 sockaddr_free (SAPtr ptr) = cCall () "idrnet_free" [ptr]
 
 ||| Allocates an amount of memory given by the ByteLength parameter.
@@ -39,13 +39,13 @@ sock_alloc bl = map BPtr $ cCall AnyPtr "idrnet_malloc" [bl]
 
 ||| Retrieves the port the given socket is bound to
 export
-getSockPort : Socket -> IO Port
+getSockPort : Socket -> JVM_IO Port
 getSockPort sock = cCall Int "idrnet_sockaddr_port" [descriptor sock]
 
 
 ||| Retrieves a socket address from a sockaddr pointer
 export
-getSockAddr : SockaddrPtr -> IO SocketAddress
+getSockAddr : SockaddrPtr -> JVM_IO SocketAddress
 getSockAddr (SAPtr ptr) = do
   addr_family_int <- cCall Int "idrnet_sockaddr_family"  [ptr]
 
@@ -59,12 +59,12 @@ getSockAddr (SAPtr ptr) = do
     Just AF_UNSPEC => pure InvalidAddress)
 
 export
-freeRecvStruct : RecvStructPtr -> IO ()
+freeRecvStruct : RecvStructPtr -> JVM_IO ()
 freeRecvStruct (RSPtr p) = cCall () "idrnet_free_recv_struct" [p]
 
 ||| Utility to extract data.
 export
-freeRecvfromStruct : RecvfromStructPtr -> IO ()
+freeRecvfromStruct : RecvfromStructPtr -> JVM_IO ()
 freeRecvfromStruct (RFPtr p) = cCall () "idrnet_free_recvfrom_struct" [p]
 
 ||| Sends the data in a given memory location
@@ -79,7 +79,7 @@ export
 sendBuf : (sock : Socket)
        -> (ptr  : BufPtr)
        -> (len  : ByteLength)
-       -> IO (Either SocketError ResultCode)
+       -> JVM_IO (Either SocketError ResultCode)
 sendBuf sock (BPtr ptr) len = do
   send_res <- cCall Int "idrnet_send_buf" [ descriptor sock, ptr, len]
 
@@ -99,7 +99,7 @@ export
 recvBuf : (sock : Socket)
        -> (ptr  : BufPtr)
        -> (len  : ByteLength)
-       -> IO (Either SocketError ResultCode)
+       -> JVM_IO (Either SocketError ResultCode)
 recvBuf sock (BPtr ptr) len = do
   recv_res <- cCall Int "idrnet_recv_buf" [ descriptor sock, ptr, len ]
 
@@ -123,7 +123,7 @@ sendToBuf : (sock : Socket)
          -> (port : Port)
          -> (ptr  : BufPtr)
          -> (len  : ByteLength)
-         -> IO (Either SocketError ResultCode)
+         -> JVM_IO (Either SocketError ResultCode)
 sendToBuf sock addr p (BPtr dat) len = do
   sendto_res <- cCall Int "idrnet_sendto_buf"
                 [ descriptor sock, dat, len, show addr, p, toCode $ family sock ]
@@ -134,19 +134,19 @@ sendToBuf sock addr p (BPtr dat) len = do
 
 ||| Utility function to get the payload of the sent message as a `String`.
 export
-foreignGetRecvfromPayload : RecvfromStructPtr -> IO String
+foreignGetRecvfromPayload : RecvfromStructPtr -> JVM_IO String
 foreignGetRecvfromPayload (RFPtr p) = cCall String "idrnet_get_recvfrom_payload" [ p ]
 
 ||| Utility function to return senders socket address.
 export
-foreignGetRecvfromAddr : RecvfromStructPtr -> IO SocketAddress
+foreignGetRecvfromAddr : RecvfromStructPtr -> JVM_IO SocketAddress
 foreignGetRecvfromAddr (RFPtr p) = do
   sockaddr_ptr <- map SAPtr $ cCall AnyPtr "idrnet_get_recvfrom_sockaddr" [p]
   getSockAddr sockaddr_ptr
 
 ||| Utility function to return sender's IPV4 port.
 export
-foreignGetRecvfromPort : RecvfromStructPtr -> IO Port
+foreignGetRecvfromPort : RecvfromStructPtr -> JVM_IO Port
 foreignGetRecvfromPort (RFPtr p) = do
   sockaddr_ptr <- cCall AnyPtr "idrnet_get_recvfrom_sockaddr" [p]
   port         <- cCall Int "idrnet_sockaddr_ipv4_port" [sockaddr_ptr]
@@ -167,7 +167,7 @@ export
 recvFromBuf : (sock : Socket)
            -> (ptr  : BufPtr)
            -> (len  : ByteLength)
-           -> IO (Either SocketError (UDPAddrInfo, ResultCode))
+           -> JVM_IO (Either SocketError (UDPAddrInfo, ResultCode))
 recvFromBuf sock (BPtr ptr) bl = do
   recv_ptr <- cCall AnyPtr "idrnet_recvfrom_buf" [ descriptor sock, ptr, bl]
 

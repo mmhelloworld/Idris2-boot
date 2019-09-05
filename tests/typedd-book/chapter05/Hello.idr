@@ -1,6 +1,6 @@
 module Main
 
-main : IO ()
+main : JVM_IO ()
 main = do
   putStr "Enter your name: "
   x <- getLine

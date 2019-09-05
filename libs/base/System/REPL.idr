@@ -9,7 +9,7 @@ import System.File
 ||| output and a new state. Returns Nothing if the repl should exit
 export
 replWith : (state : a) -> (prompt : String) ->
-           (onInput : a -> String -> Maybe (String, a)) -> IO ()
+           (onInput : a -> String -> Maybe (String, a)) -> JVM_IO ()
 replWith acc prompt fn
    = do putStr prompt
         eof <- fEOF stdin
@@ -28,7 +28,7 @@ replWith acc prompt fn
 ||| output
 export
 repl : (prompt : String) ->
-       (onInput : String -> String) -> IO ()
+       (onInput : String -> String) -> JVM_IO ()
 repl prompt fn
    = replWith () prompt (\x, s => Just (fn s, ()))
 

@@ -21,9 +21,15 @@ import Parser.Lexer
 import Parser.Support
 import Utils.Binary
 
-import System
+-- import System
 import Text.Parser
 import YafflePaths
+
+import IdrisJvm.IO
+import IdrisJvm.System
+import IdrisJvm.File
+
+%hide Prelude.File.GenericFileError
 
 %default covering
 
@@ -249,7 +255,7 @@ build pkg
          runScript (postbuild pkg)
          pure []
 
-copyFile : String -> String -> IO (Either FileError ())
+copyFile : String -> String -> JVM_IO (Either FileError ())
 copyFile src dest
     = do Right buf <- readFromFile src
              | Left err => pure (Left err)
@@ -362,8 +368,7 @@ clean pkg
   where
   delete : String -> Core ()
   delete path = do True <- coreLift $ fRemove path
-                     | False => do err <- coreLift getErrno
-                                   coreLift $ putStrLn $ path ++ ": " ++ show (GenericFileError err)
+                     | False => do coreLift $ putStrLn $ path ++ ": " ++ show (GenericFileError (-1))
                    coreLift $ putStrLn $ "Removed: " ++ path
   deleteFolder : String -> List String -> Core ()
   deleteFolder builddir ns = delete $ builddir ++ dirSep ++ showSep dirSep ns

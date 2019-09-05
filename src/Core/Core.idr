@@ -5,8 +5,10 @@ import Core.TT
 import Parser.Support
 
 import public Control.Catchable
-import public Data.IORef
-import System
+import public IdrisJvm.Data.IORef
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
 
 %default covering
 
@@ -308,15 +310,15 @@ getErrorLoc (InCon _ _ err) = getErrorLoc err
 getErrorLoc (InLHS _ _ err) = getErrorLoc err
 getErrorLoc (InRHS _ _ err) = getErrorLoc err
 
--- Core is a wrapper around IO that is specialised for efficiency.
+-- Core is a wrapper around JVM_IO that is specialised for efficiency.
 export
 record Core t where
   constructor MkCore
-  runCore : IO (Either Error t)
+  runCore : JVM_IO (Either Error t)
 
 export
 coreRun : Core a ->
-          (Error -> IO b) -> (a -> IO b) -> IO b
+          (Error -> JVM_IO b) -> (a -> JVM_IO b) -> JVM_IO b
 coreRun (MkCore act) err ok
     = either err ok !act
 
@@ -332,10 +334,10 @@ wrapError fe (MkCore prog)
                              Left err => pure (Left (fe err))
                              Right val => pure (Right val)))
 
--- This would be better if we restrict it to a limited set of IO operations
+-- This would be better if we restrict it to a limited set of JVM_IO operations
 export
 %inline
-coreLift : IO a -> Core a
+coreLift : JVM_IO a -> Core a
 coreLift op = MkCore (do op' <- op
                          pure (Right op'))
 

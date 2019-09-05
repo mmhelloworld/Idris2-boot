@@ -1,6 +1,6 @@
 import Data.IORef
 
-main : IO ()
+main : JVM_IO ()
 main
     = do x <- newIORef 42
          let y = x

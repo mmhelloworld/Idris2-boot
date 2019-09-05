@@ -45,7 +45,7 @@ isValidInput (x :: (y :: xs)) = No isValidTwo
 isValidString : (s : String) -> Dec (ValidInput (unpack s))
 isValidString s = isValidInput (unpack s)
 
-readGuess : IO (x ** ValidInput x)
+readGuess : JVM_IO (x ** ValidInput x)
 readGuess = do putStr "Guess: "
                x <- getLine
                case isValidString (toUpper x) of
@@ -54,7 +54,7 @@ readGuess = do putStr "Guess: "
                                     readGuess
 
 game : {guesses : _} -> {letters : _} ->
-       WordState (S guesses) (S letters) -> IO Finished
+       WordState (S guesses) (S letters) -> JVM_IO Finished
 game {guesses} {letters} st
         = do (_ ** Letter letter) <- readGuess
              case processGuess letter st of
@@ -68,7 +68,7 @@ game {guesses} {letters} st
                                      Z => pure (Won r)
                                      S k => game r
 
-main : IO ()
+main : JVM_IO ()
 main = do result <- game {guesses=2} (MkWordState "Test" ['T', 'E', 'S'])
           case result of
                Lost (MkWordState word missing) =>

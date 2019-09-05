@@ -126,5 +126,5 @@ processInput store input
            Just (Get pos) => getEntry pos store
            Just Quit => Nothing
 
-main : IO ()
+main : JVM_IO ()
 main = replWith (MkData (SString .+. SString .+. SInt) _ []) "Command: " processInput

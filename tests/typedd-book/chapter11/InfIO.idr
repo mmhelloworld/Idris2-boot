@@ -1,9 +1,9 @@
 -- %default total
 
 data InfIO : Type where
-     Do : IO a -> (a -> Inf InfIO) -> InfIO
+     Do : JVM_IO a -> (a -> Inf InfIO) -> InfIO
 
-(>>=) : IO a -> (a -> Inf InfIO) -> InfIO
+(>>=) : JVM_IO a -> (a -> Inf InfIO) -> InfIO
 (>>=) = Do
 
 loopPrint : String -> InfIO
@@ -17,11 +17,11 @@ tank Z = Dry
 tank (S k) = More (tank k)
 
 partial
-runPartial : InfIO -> IO ()
+runPartial : InfIO -> JVM_IO ()
 runPartial (Do action f) = do res <- action
                               runPartial (f res)
 
-run : Fuel -> InfIO -> IO ()
+run : Fuel -> InfIO -> JVM_IO ()
 run (More fuel) (Do c f) = do res <- c
                               run fuel (f res)
 run Dry p = putStrLn "Out of fuel"
@@ -31,5 +31,5 @@ forever : Fuel
 forever = More forever
 
 partial
-main : IO ()
+main : JVM_IO ()
 main = run (tank 10) (loopPrint "vroom")

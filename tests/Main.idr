@@ -1,6 +1,9 @@
 module Main
 
-import System
+-- import System
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
 
 %default covering
 
@@ -69,17 +72,16 @@ ideModeTests : List String
 ideModeTests
   =  [ "ideMode001", "ideMode002" ]
 
-chdir : String -> IO Bool
-chdir dir
-    = do ok <- foreign FFI_C "chdir" (String -> IO Int) dir
-         pure (ok == 0)
+chdir : String -> JVM_IO Bool
+chdir dir 
+    = changeDir dir
 
-fail : String -> IO ()
+fail : String -> JVM_IO ()
 fail err
     = do putStrLn err
          exitWith (ExitFailure 1)
 
-runTest : String -> String -> IO Bool
+runTest : String -> String -> JVM_IO Bool
 runTest prog testPath
     = do chdir testPath
          isSuccess <- runTest'
@@ -89,12 +91,14 @@ runTest prog testPath
         runTest' : IO Bool
         runTest'
             = do putStr $ testPath ++ ": "
-                 system $ "sh ./run " ++ prog ++ " | tr -d '\\r' > output"
+                 system $ "sh -c \"./run " ++ prog ++ " | tr -d '\\r' > output\""
                  Right out <- readFile "output"
                      | Left err => do print err
+                                      chdir "../.."
                                       pure False
                  Right exp <- readFile "expected"
                      | Left err => do print err
+                                      chdir "../.."
                                       pure False
 
                  if (out == exp)
@@ -108,18 +112,18 @@ runTest prog testPath
 
                  pure (out == exp)
 
-exists : String -> IO Bool
+exists : String -> JVM_IO Bool
 exists f
     = do Right ok <- openFile f Read
              | Left err => pure False
          closeFile ok
          pure True
 
-firstExists : List String -> IO (Maybe String)
+firstExists : List String -> JVM_IO (Maybe String)
 firstExists [] = pure Nothing
 firstExists (x :: xs) = if !(exists x) then pure (Just x) else firstExists xs
 
-findChez : IO (Maybe String)
+findChez : JVM_IO (Maybe String)
 findChez
     = do env <- getEnv "CHEZ"
          case env of
@@ -127,7 +131,7 @@ findChez
             Nothing => firstExists [p ++ x | p <- ["/usr/bin/", "/usr/local/bin/"],
                                     x <- ["scheme", "chez", "chezscheme9.5"]]
 
-runChezTests : String -> List String -> IO (List Bool)
+runChezTests : String -> List String -> JVM_IO (List Bool)
 runChezTests prog tests
     = do chexec <- findChez
          maybe (do putStrLn "Chez Scheme not found"
@@ -136,7 +140,7 @@ runChezTests prog tests
                          traverse (runTest prog) tests)
                chexec
 
-main : IO ()
+main : JVM_IO ()
 main
     = do args <- getArgs
          let (_ :: idris2 :: _) = args

@@ -43,7 +43,11 @@ import TTImp.ProcessDecls
 import Control.Catchable
 import Data.NameMap
 
-import System
+import IdrisJvm.System
+
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
 
 %default covering
 

@@ -1,7 +1,7 @@
 import Data.Primitives.Views
 import System
 
-quiz : Stream Int -> (score : Nat) -> IO ()
+quiz : Stream Int -> (score : Nat) -> JVM_IO ()
 quiz (num1 :: num2 :: nums) score
    = do putStrLn ("Score so far: " ++ show score)
         putStr (show num1 ++ " * " ++ show num2 ++ "? ")
@@ -23,6 +23,6 @@ arithInputs seed = map bound (randoms seed)
     bound x with (divides x 12)
       bound ((12 * div) + rem) | (DivBy div rem prf) = rem + 1
 
-main : IO ()
+main : JVM_IO ()
 main = do seed <- time
           quiz (arithInputs (fromInteger seed)) 0

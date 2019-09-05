@@ -13,7 +13,8 @@ import Idris.Version
 
 import YafflePaths
 
-import System
+import IdrisJvm.System
+import IdrisJvm.IO
 
 -- TODO: Version numbers on dependencies
 export

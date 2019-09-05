@@ -1,7 +1,7 @@
 crew : List String
 crew = ["Lister", "Rimmer", "Kryten", "Cat"]
 
-main : IO ()
+main : JVM_IO ()
 main = do putStr "Display Crew? "
           x <- getLine
           when (x == "yes") $

@@ -121,7 +121,7 @@ In `Hangman.idr`:
   definition, so add them to its type:
 
     game : {guesses : _} -> {letters : _} ->
-           WordState (S guesses) (S letters) -> IO Finished
+           WordState (S guesses) (S letters) -> JVM_IO Finished
   
 Chapter 10
 ----------

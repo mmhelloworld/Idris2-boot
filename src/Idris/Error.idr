@@ -11,6 +11,9 @@ import Idris.Syntax
 
 import Parser.Support
 
+import IdrisJvm.IO
+import IdrisJvm.File
+
 %default covering
 
 pshow : {auto c : Ref Ctxt Defs} ->

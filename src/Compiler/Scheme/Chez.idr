@@ -14,12 +14,16 @@ import Utils.Hex
 
 import Data.NameMap
 import Data.Vect
-import System
+-- import System
 import System.Info
+
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
 
 %default covering
 
-findChez : IO String
+findChez : JVM_IO String
 findChez
     = do env <- getEnv "CHEZ"
          case env of
