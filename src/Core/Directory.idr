@@ -8,6 +8,9 @@ import Core.Options
 
 import System.Info
 
+import IdrisJvm.IO
+import IdrisJvm.File
+
 %default total
 
 fullPath : String -> List String
@@ -115,7 +118,7 @@ pathToNS wdir sdir fname
 
 -- Create subdirectories, if they don't exist
 export
-mkdirs : List String -> IO (Either FileError ())
+mkdirs : List String -> JVM_IO (Either FileError ())
 mkdirs [] = pure (Right ())
 mkdirs ("." :: ds) = mkdirs ds
 mkdirs ("" :: ds) = mkdirs ds

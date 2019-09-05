@@ -18,6 +18,8 @@ import Idris.REPLCommon
 import Idris.Syntax
 
 import Data.StringMap
+import IdrisJvm.IO
+import IdrisJvm.File
 
 %default covering
 

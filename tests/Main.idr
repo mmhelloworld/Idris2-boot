@@ -1,6 +1,9 @@
 module Main
 
-import System
+-- import System
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
 
 %default covering
 
@@ -138,24 +141,23 @@ options args = case args of
 ------------------------------------------------------------------------
 -- Actual test runner
 
-chdir : String -> IO Bool
-chdir dir
-    = do ok <- foreign FFI_C "chdir" (String -> IO Int) dir
-         pure (ok == 0)
+chdir : String -> JVM_IO Bool
+chdir dir 
+    = changeDir dir
 
-fail : String -> IO ()
+fail : String -> JVM_IO ()
 fail err
     = do putStrLn err
          exitWith (ExitFailure 1)
 
-runTest : Options -> String -> IO Bool
+runTest : Options -> String -> JVM_IO Bool
 runTest opts testPath
     = do chdir testPath
          isSuccess <- runTest'
          chdir "../.."
          pure isSuccess
     where
-        getAnswer : IO Bool
+        getAnswer : JVM_IO Bool
         getAnswer = do
           str <- getLine
           case str of
@@ -164,14 +166,14 @@ runTest opts testPath
             _   => do putStrLn "Invalid Answer."
                       getAnswer
 
-        printExpectedVsOutput : String -> String -> IO ()
+        printExpectedVsOutput : String -> String -> JVM_IO ()
         printExpectedVsOutput exp out = do
           putStrLn "Expected:"
           printLn exp
           putStrLn "Given:"
           printLn out
 
-        mayOverwrite : Maybe String -> String -> IO ()
+        mayOverwrite : Maybe String -> String -> JVM_IO ()
         mayOverwrite mexp out = do
           case mexp of
             Nothing => putStr $ unlines
@@ -189,10 +191,10 @@ runTest opts testPath
                           | Left err => print err
                       pure ()
 
-        runTest' : IO Bool
+        runTest' : JVM_IO Bool
         runTest'
             = do putStr $ testPath ++ ": "
-                 system $ "sh ./run " ++ idris2 opts ++ " | tr -d '\\r' > output"
+                 system $ "sh -c \"./run " ++ idris2 opts ++ " | tr -d '\\r' > output\""
                  Right out <- readFile "output"
                      | Left err => do print err
                                       pure False
@@ -214,18 +216,18 @@ runTest opts testPath
 
                  pure (out == exp)
 
-exists : String -> IO Bool
+exists : String -> JVM_IO Bool
 exists f
     = do Right ok <- openFile f Read
              | Left err => pure False
          closeFile ok
          pure True
 
-firstExists : List String -> IO (Maybe String)
+firstExists : List String -> JVM_IO (Maybe String)
 firstExists [] = pure Nothing
 firstExists (x :: xs) = if !(exists x) then pure (Just x) else firstExists xs
 
-pathLookup : IO (Maybe String)
+pathLookup : JVM_IO (Maybe String)
 pathLookup = do
   path <- getEnv "PATH"
   let pathList = split (== ':') $ fromMaybe "/usr/bin:/usr/local/bin" path
@@ -233,12 +235,12 @@ pathLookup = do
                                     x <- ["chez", "chezscheme9.5", "scheme"]]
   firstExists candidates
 
-findChez : IO (Maybe String)
+findChez : JVM_IO (Maybe String)
 findChez
     = do Just chez <- getEnv "CHEZ" | Nothing => pathLookup
          pure $ Just chez
 
-runChezTests : Options -> List String -> IO (List Bool)
+runChezTests : Options -> List String -> JVM_IO (List Bool)
 runChezTests opts tests
     = do chexec <- findChez
          maybe (do putStrLn "Chez Scheme not found"
@@ -252,7 +254,7 @@ filterTests opts = case onlyNames opts of
   [] => id
   xs => filter (\ name => any (`isInfixOf` name) xs)
 
-main : IO ()
+main : JVM_IO ()
 main
     = do args <- getArgs
          let (Just opts) = options args

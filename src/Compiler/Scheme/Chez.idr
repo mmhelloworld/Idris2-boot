@@ -14,13 +14,17 @@ import Utils.Hex
 
 import Data.NameMap
 import Data.Vect
-import System
+-- import System
 import System.Info
+
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
 
 %default covering
 
 
-pathLookup : IO String
+pathLookup : JVM_IO String
 pathLookup
     = do path <- getEnv "PATH"
          let pathList = split (== ':') $ fromMaybe "/usr/bin:/usr/local/bin" path
@@ -29,7 +33,7 @@ pathLookup
          e <- firstExists candidates
          pure $ fromMaybe "/usr/bin/env scheme" e
 
-findChez : IO String
+findChez : JVM_IO String
 findChez
     = do Just chez <- getEnv "CHEZ" | Nothing => pathLookup
          pure chez

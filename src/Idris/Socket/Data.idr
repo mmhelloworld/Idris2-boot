@@ -42,7 +42,7 @@ EAGAIN : Int
 EAGAIN =
   -- I'm sorry
   -- maybe
-  unsafePerformIO $ foreign FFI_C "idrnet_geteagain" (() -> IO Int) ()
+  unsafePerformIO $ foreign FFI_C "idrnet_geteagain" (() -> JVM_IO Int) ()
 
 -- -------------------------------------------------------------- [ Interfaces ]
 

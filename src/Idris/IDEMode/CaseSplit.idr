@@ -18,6 +18,9 @@ import Idris.REPLOpts
 import Idris.Resugar
 import Idris.Syntax
 
+import IdrisJvm.IO
+import IdrisJvm.File
+
 %default covering
 
 getLine : Nat -> List String -> Maybe String

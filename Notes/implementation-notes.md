@@ -46,7 +46,7 @@ Where to find things:
 The Core Type, and Ref
 ----------------------
 Core is a "monad" (not really, for efficiency reasons, at the moment...)
-supporting Errors and IO [TODO: Allow restricting to specific IO operations]
+supporting Errors and JVM_IO [TODO: Allow restricting to specific JVM_IO operations]
 The raw syntax is defined by a type RawImp which has a source location at each
 node, and any errors in elaboration note the location at the point where the
 error occurred.

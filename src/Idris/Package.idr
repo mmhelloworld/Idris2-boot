@@ -25,9 +25,15 @@ import Parser.Lexer
 import Parser.Support
 import Utils.Binary
 
-import System
+-- import System
 import Text.Parser
 import YafflePaths
+
+import IdrisJvm.IO
+import IdrisJvm.System
+import IdrisJvm.File
+
+%hide Prelude.File.GenericFileError
 
 %default covering
 
@@ -285,7 +291,7 @@ build pkg
          runScript (postbuild pkg)
          pure []
 
-copyFile : String -> String -> IO (Either FileError ())
+copyFile : String -> String -> JVM_IO (Either FileError ())
 copyFile src dest
     = do Right buf <- readFromFile src
              | Left err => pure (Left err)

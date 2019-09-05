@@ -10,6 +10,7 @@ import Core.TT
 import Core.TTC
 
 import Utils.Binary
+import IdrisJvm.IO
 
 -- Additional data we keep about the context to support interactive editing
 

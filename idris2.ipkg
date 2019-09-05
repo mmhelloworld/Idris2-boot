@@ -74,9 +74,6 @@ modules =
     Idris.REPLOpts,
     Idris.Resugar,
     Idris.SetOptions,
-    Idris.Socket,
-    Idris.Socket.Data,
-    Idris.Socket.Raw,
     Idris.Syntax,
     Idris.Version,
 
@@ -141,7 +138,9 @@ modules =
     Yaffle.REPL
 
 sourcedir = src
-executable = idris2.c
-opts = "--partial-eval -S"
+executable = idris2
+opts = "--partial-eval --portable-codegen jvm"
+
+pkgs = idrisjvmffi
 
 main = Idris.Main

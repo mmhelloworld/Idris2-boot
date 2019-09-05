@@ -16,7 +16,11 @@ import Data.NameMap
 import Data.StringMap
 import Data.IntMap
 
-import System
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
+
+%hide Prelude.File.changeDir
 
 %default covering
 
@@ -491,7 +495,7 @@ commitCtxt ctxt
   where
     -- We know the array must be big enough, because it will have been resized
     -- if necessary in the branch to fit the index we've been given here
-    commitStaged : List (Int, ContextEntry) -> IOArray ContextEntry -> IO ()
+    commitStaged : List (Int, ContextEntry) -> IOArray ContextEntry -> JVM_IO ()
     commitStaged [] arr = pure ()
     commitStaged ((idx, val) :: rest) arr
         = do writeArray arr idx val

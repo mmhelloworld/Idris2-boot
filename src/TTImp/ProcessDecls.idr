@@ -19,6 +19,8 @@ import TTImp.ProcessTransform
 import TTImp.ProcessType
 import TTImp.TTImp
 
+import IdrisJvm.IO
+
 -- Implements processDecl, declared in TTImp.Elab.Check
 process : {vars : _} ->
           {auto c : Ref Ctxt Defs} ->

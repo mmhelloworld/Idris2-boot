@@ -36,14 +36,19 @@ import TTImp.ProcessDecls
 import Utils.Hex
 
 import Control.Catchable
-import System
-import Idris.Socket
-import Idris.Socket.Data
+-- import System
+-- import Idris.Socket
+-- import Idris.Socket.Data
 
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
+
+{-
 export
-socketToFile : Socket -> IO (Either String File)
+socketToFile : Socket -> JVM_IO (Either String File)
 socketToFile (MkSocket f _ _ _) = do
-  file <- map FHandle $ foreign FFI_C "fdopen" (Int -> String -> IO Ptr) f "r+"
+  file <- map FHandle $ foreign FFI_C "fdopen" (Int -> String -> JVM_IO Ptr) f "r+"
   if !(ferror file) then do
     pure (Left "Failed to fdopen socket file descriptor")
   else pure (Right file)
@@ -75,8 +80,14 @@ initIDESocketFile h p = do
                pure (Left ("Failed to accept on socket with error: " ++ show err))
             Right (s, _) =>
                socketToFile s
+-}
 
-getChar : File -> IO Char
+export
+initIDESocketFile : Int -> JVM_IO (Either String File)
+initIDESocketFile p = socketListenAndAccept p
+
+{-
+getChar : File -> JVM_IO Char
 getChar (FHandle h) = do
   if !(fEOF (FHandle h)) then do
     putStrLn "Alas the file is done, aborting"
@@ -95,8 +106,12 @@ getFLine (FHandle h) = do
     putStrLn "Failed to read a line"
     exit 1
   else pure str
+-}
 
-getNChars : File -> Nat -> IO (List Char)
+getFLine : File -> JVM_IO String
+getFLine file = getLine file
+
+getNChars : File -> Nat -> JVM_IO (List Char)
 getNChars i Z = pure []
 getNChars i (S k)
     = do x <- getChar i
@@ -105,7 +120,7 @@ getNChars i (S k)
 
 -- Read 6 characters. If they're a hex number, read that many characters.
 -- Otherwise, just read to newline
-getInput : File -> IO String
+getInput : File -> JVM_IO String
 getInput f
     = do x <- getNChars f 6
          case fromHexChars (reverse x) of

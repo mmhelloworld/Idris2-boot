@@ -26,6 +26,9 @@ import Data.NameMap
 
 import Control.Catchable
 
+import IdrisJvm.IO
+import IdrisJvm.File
+
 processDecl : {auto c : Ref Ctxt Defs} ->
               {auto u : Ref UST UState} ->
               {auto s : Ref Syn SyntaxInfo} ->

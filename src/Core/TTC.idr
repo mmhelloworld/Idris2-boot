@@ -15,6 +15,15 @@ import Data.Vect
 
 import Utils.Binary
 
+import IdrisJvm.Data.Buffer
+import IdrisJvm.IO
+import IdrisJvm.File
+
+%default total
+%hide Prelude.File.File
+%hide Prelude.File.FileError
+%hide Prelude.File.openFile
+
 %default covering
 
 export

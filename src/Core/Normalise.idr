@@ -12,6 +12,8 @@ import Core.Value
 import Data.IntMap
 import Data.Vect
 
+import IdrisJvm.IO
+
 %default covering
 
 -- A pair of a term and its normal form. This could be constructed either

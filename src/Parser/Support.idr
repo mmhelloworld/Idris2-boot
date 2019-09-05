@@ -8,6 +8,13 @@ import public Text.Parser
 import Core.TT
 import Data.List.Views
 
+import IdrisJvm.IO
+import IdrisJvm.File
+
+%hide Prelude.File.File
+%hide Prelude.File.FileError
+%hide Prelude.File.readFile
+
 %default total
 
 public export
@@ -69,7 +76,7 @@ runParser : Maybe LiterateStyle -> String -> Grammar (TokenData Token) e ty -> E
 runParser lit = runParserTo lit (const False)
 
 export
-parseFile : (fn : String) -> Rule ty -> IO (Either ParseError ty)
+parseFile : (fn : String) -> Rule ty -> JVM_IO (Either ParseError ty)
 parseFile fn p
     = do Right str <- readFile fn
              | Left err => pure (Left (FileFail err))

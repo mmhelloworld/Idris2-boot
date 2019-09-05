@@ -19,3 +19,10 @@
 /tests/**/*.dll
 
 /src/YafflePaths.idr
+
+*.iml
+classes/**
+*-classes/**
+output
+*.jar
+build/
