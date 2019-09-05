@@ -8,5 +8,5 @@ sumInputs tot inp
            else let newVal = tot + val in
                     Just ("Subtotal: " ++ show newVal ++ "\n", newVal)
   
-main : IO ()
+main : JVM_IO ()
 main = replWith 0 "Value: " sumInputs

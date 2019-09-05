@@ -15,7 +15,7 @@ import Data.List
 socket : (fam  : SocketFamily)
       -> (ty   : SocketType)
       -> (pnum : ProtocolNumber)
-      -> IO (Either SocketError Socket)
+      -> JVM_IO (Either SocketError Socket)
 socket sf st pn = do
   socket_res <- cCall Int "idrnet_socket" [toCode sf, toCode st, pn]
 
@@ -24,7 +24,7 @@ socket sf st pn = do
     else pure $ Right (MkSocket socket_res sf st pn)
 
 ||| Close a socket
-close : Socket -> IO ()
+close : Socket -> JVM_IO ()
 close sock = cCall () "close" [descriptor sock]
 
 ||| Binds a socket to the given socket address and port.
@@ -32,7 +32,7 @@ close sock = cCall () "close" [descriptor sock]
 bind : (sock : Socket)
     -> (addr : Maybe SocketAddress)
     -> (port : Port)
-    -> IO Int
+    -> JVM_IO Int
 bind sock addr port = do
     bind_res <- cCall Int "idrnet_bind"
                 [ descriptor sock, toCode $ family sock
@@ -51,7 +51,7 @@ bind sock addr port = do
 connect : (sock : Socket)
        -> (addr : SocketAddress)
        -> (port : Port)
-       -> IO ResultCode
+       -> JVM_IO ResultCode
 connect sock addr port = do
   conn_res <- cCall Int "idrnet_connect"
               [ descriptor sock, toCode $ family sock, toCode $ socketType sock, show addr, port]
@@ -63,7 +63,7 @@ connect sock addr port = do
 ||| Listens on a bound socket.
 |||
 ||| @sock The socket to listen on.
-listen : (sock : Socket) -> IO Int
+listen : (sock : Socket) -> JVM_IO Int
 listen sock = do
   listen_res <- cCall Int "listen" [ descriptor sock, BACKLOG ]
   if listen_res == (-1)
@@ -79,7 +79,7 @@ listen sock = do
 |||
 ||| @sock The socket used to establish connection.
 accept : (sock : Socket)
-      -> IO (Either SocketError (Socket, SocketAddress))
+      -> JVM_IO (Either SocketError (Socket, SocketAddress))
 accept sock = do
 
   -- We need a pointer to a sockaddr structure. This is then passed into
@@ -105,7 +105,7 @@ accept sock = do
 ||| @msg  The data to send.
 send : (sock : Socket)
     -> (msg  : String)
-    -> IO (Either SocketError ResultCode)
+    -> JVM_IO (Either SocketError ResultCode)
 send sock dat = do
   send_res <- cCall Int "idrnet_send" [ descriptor sock, dat ]
 
@@ -124,7 +124,7 @@ send sock dat = do
 ||| @len  How much of the data to receive.
 recv : (sock : Socket)
     -> (len : ByteLength)
-    -> IO (Either SocketError (String, ResultCode))
+    -> JVM_IO (Either SocketError (String, ResultCode))
 recv sock len = do
   -- Firstly make the request, get some kind of recv structure which
   -- contains the result of the recv and possibly the retrieved payload
@@ -153,11 +153,11 @@ recv sock len = do
 |||
 ||| @sock The socket on which to receive the message.
 partial
-recvAll : (sock : Socket) -> IO (Either SocketError String)
+recvAll : (sock : Socket) -> JVM_IO (Either SocketError String)
 recvAll sock = recvRec sock [] 64
   where
     partial
-    recvRec : Socket -> List String -> ByteLength -> IO (Either SocketError String)
+    recvRec : Socket -> List String -> ByteLength -> JVM_IO (Either SocketError String)
     recvRec sock acc n = do res <- recv sock n
                             case res of
                               Left 0 => pure (Right $ concat $ reverse acc)
@@ -178,7 +178,7 @@ sendTo : (sock : Socket)
       -> (addr : SocketAddress)
       -> (port : Port)
       -> (msg  : String)
-      -> IO (Either SocketError ByteLength)
+      -> JVM_IO (Either SocketError ByteLength)
 sendTo sock addr p dat = do
   sendto_res <- cCall Int "idrnet_sendto"
                 [ descriptor sock, dat, show addr, p ,toCode $ family sock ]
@@ -200,7 +200,7 @@ sendTo sock addr p dat = do
 |||
 recvFrom : (sock : Socket)
         -> (len  : ByteLength)
-        -> IO (Either SocketError (UDPAddrInfo, String, ResultCode))
+        -> JVM_IO (Either SocketError (UDPAddrInfo, String, ResultCode))
 recvFrom sock bl = do
   recv_ptr <- cCall Ptr "idrnet_recvfrom"
               [ descriptor sock, bl ]

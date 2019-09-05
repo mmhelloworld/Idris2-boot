@@ -4,14 +4,14 @@ import System
 -- %default total
 
 data InfIO : Type where
-     Do : IO a -> (a -> Inf InfIO) -> InfIO
+     Do : JVM_IO a -> (a -> Inf InfIO) -> InfIO
 
-(>>=) : IO a -> (a -> Inf InfIO) -> InfIO
+(>>=) : JVM_IO a -> (a -> Inf InfIO) -> InfIO
 (>>=) = Do
 
 data Fuel = Dry | More (Lazy Fuel)
 
-run : Fuel -> InfIO -> IO ()
+run : Fuel -> InfIO -> JVM_IO ()
 run (More fuel) (Do c f) = do res <- c
                               run fuel (f res)
 run Dry p = putStrLn "Out of fuel"
@@ -43,6 +43,6 @@ forever : Fuel
 forever = More forever
 
 partial
-main : IO ()
+main : JVM_IO ()
 main = do seed <- time
           run forever (quiz (arithInputs (fromInteger seed)) 0)

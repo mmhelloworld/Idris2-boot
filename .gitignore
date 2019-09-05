@@ -12,3 +12,8 @@ libs/**/build
 tests/**/output
 
 src/YafflePaths.idr
+
+*.iml
+classes/**
+*-classes/**
+output

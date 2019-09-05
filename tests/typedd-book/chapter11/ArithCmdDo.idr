@@ -27,14 +27,14 @@ namespace ConsoleDo
 
 data Fuel = Dry | More (Lazy Fuel)
 
-runCommand : Command a -> IO a
+runCommand : Command a -> JVM_IO a
 runCommand (PutStr x) = putStr x
 runCommand GetLine = getLine
 runCommand (Pure val) = pure val
 runCommand (Bind c f) = do res <- runCommand c
                            runCommand (f res)
 
-run : Fuel -> ConsoleIO a -> IO (Maybe a)
+run : Fuel -> ConsoleIO a -> JVM_IO (Maybe a)
 run fuel (Quit val) = do pure (Just val)
 run (More fuel) (Do c f) = do res <- runCommand c
                               run fuel (f res)
@@ -88,7 +88,7 @@ forever : Fuel
 forever = More forever
 
 partial
-main : IO ()
+main : JVM_IO ()
 main = do seed <- time
           Just score <- run forever (quiz (arithInputs (fromInteger seed)) 0)
                | Nothing => putStrLn "Ran out of fuel"

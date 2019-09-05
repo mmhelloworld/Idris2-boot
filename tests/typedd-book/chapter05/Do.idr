@@ -1,12 +1,12 @@
-printTwoThings : IO ()
+printTwoThings : JVM_IO ()
 printTwoThings = do putStrLn "Hello"
                     putStrLn "World"
 
-printInput : IO ()
+printInput : JVM_IO ()
 printInput = do x <- getLine
                 putStrLn x
 
-printLength : IO ()
+printLength : JVM_IO ()
 printLength = do putStr "Input string: "
                  input <- getLine
                  let len = length input

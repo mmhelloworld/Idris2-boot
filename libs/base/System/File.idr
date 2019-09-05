@@ -50,7 +50,7 @@ toFileError 3 = FileNotFound
 toFileError 4 = PermissionDenied
 toFileError x = GenericFileError x
 
-fpure : Either Int a -> IO (Either FileError a)
+fpure : Either Int a -> JVM_IO (Either FileError a)
 fpure (Left err) = pure (Left (toFileError err))
 fpure (Right x) = pure (Right x)
 
@@ -79,45 +79,45 @@ stderr : File
 stderr = FHandle prim__stderr
 
 export
-openFile : String -> Mode -> IO (Either FileError File)
+openFile : String -> Mode -> JVM_IO (Either FileError File)
 openFile f m 
     = do res <- primIO (prim__open f (modeStr m) 0)
          fpure (map FHandle res)
 
 export
-openBinaryFile : String -> Mode -> IO (Either FileError BinaryFile)
+openBinaryFile : String -> Mode -> JVM_IO (Either FileError BinaryFile)
 openBinaryFile f m 
     = do res <- primIO (prim__open f (modeStr m) 1)
          fpure (map FHandle res)
 
 export
-closeFile : FileT t -> IO ()
+closeFile : FileT t -> JVM_IO ()
 closeFile (FHandle f) = primIO (prim__close f)
 
 export
-fGetLine : (h : File) -> IO (Either FileError String)
+fGetLine : (h : File) -> JVM_IO (Either FileError String)
 fGetLine (FHandle f) 
     = do res <- primIO (prim__readLine f)
          fpure res
 
 export
-fPutStr : (h : File) -> String -> IO (Either FileError ())
+fPutStr : (h : File) -> String -> JVM_IO (Either FileError ())
 fPutStr (FHandle f) str
     = do res <- primIO (prim__writeLine f str)
          fpure res
 
 export
-fPutStrLn : (h : File) -> String -> IO (Either FileError ())
+fPutStrLn : (h : File) -> String -> JVM_IO (Either FileError ())
 fPutStrLn f str = fPutStr f (str ++ "\n") 
 
 export
-fEOF : (h : File) -> IO Bool
+fEOF : (h : File) -> JVM_IO Bool
 fEOF (FHandle f)
     = do res <- primIO (prim__eof f)
          pure (res /= 0)
     
 export
-readFile : String -> IO (Either FileError String)
+readFile : String -> JVM_IO (Either FileError String)
 readFile file
   = do Right h <- openFile file Read
           | Left err => pure (Left err)
@@ -127,7 +127,7 @@ readFile file
        closeFile h
        pure (Right (fastAppend content))
   where
-    read : List String -> File -> IO (Either FileError (List String))
+    read : List String -> File -> JVM_IO (Either FileError (List String))
     read acc h
         = do eof <- fEOF h
              if eof

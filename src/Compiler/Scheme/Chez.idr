@@ -13,16 +13,20 @@ import Core.TT
 
 import Data.NameMap
 import Data.Vect
-import System
+-- import System
 import System.Info
+
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
 
 %default covering
 
-firstExists : List String -> IO (Maybe String)
+firstExists : List String -> JVM_IO (Maybe String)
 firstExists [] = pure Nothing
 firstExists (x :: xs) = if !(exists x) then pure (Just x) else firstExists xs
 
-findChez : IO String
+findChez : JVM_IO String
 findChez
     = do env <- getEnv "CHEZ"
          case env of

@@ -16,16 +16,20 @@ import Data.Vect
 import System
 import System.Info
 
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
+
 %default covering
 
-firstExists : List String -> IO (Maybe String)
+firstExists : List String -> JVM_IO (Maybe String)
 firstExists [] = pure Nothing
 firstExists (x :: xs) = if !(exists x) then pure (Just x) else firstExists xs
 
-findCSI : IO String
+findCSI : JVM_IO String
 findCSI = pure "/usr/bin/env csi"
 
-findCSC : IO String
+findCSC : JVM_IO String
 findCSC = pure "/usr/bin/env csc"
 
 schHeader : List String -> String

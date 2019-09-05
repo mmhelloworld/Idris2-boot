@@ -1,3 +1,26 @@
-File error in DoesntExist.idr: File Not Found
+File error in DoesntExist.idr: java.nio.file.NoSuchFileException: /home/marimuthu/workspace/Idris2/tests/idris2/error008/DoesntExist.idr
+	at sun.nio.fs.UnixException.translateToIOException(UnixException.java:86)
+	at sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:102)
+	at sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:107)
+	at sun.nio.fs.UnixFileSystemProvider.newByteChannel(UnixFileSystemProvider.java:214)
+	at java.nio.file.Files.newByteChannel(Files.java:361)
+	at java.nio.file.Files.newByteChannel(Files.java:407)
+	at java.nio.file.Files.readAllBytes(Files.java:3152)
+	at io.github.mmhelloworld.idrisjvm.io.Files.readFile(Files.java:52)
+	at I_IdrisJvm.I_Files.Files.lambda$readFile$2(Files.idr)
+	at io.github.mmhelloworld.idrisjvm.runtime.Util.throwable(Util.java:38)
+	at I_IdrisJvm.I_Files.Files.readFile(Files.idr)
+	at I_Idris.REPL.loadMainFile(REPL.idr)
+	at main.Main.lambda$$lbraceAPPLY_0$rbrace$18$1898(Main.idr)
+	at io.github.mmhelloworld.idrisjvm.runtime.Runtime.unwrap(Runtime.java:116)
+	at main.Main.stMain(Main.idr)
+	at main.Main.lambda$$lbraceAPPLY_0$rbrace$19$2057(Main.idr)
+	at io.github.mmhelloworld.idrisjvm.runtime.Runtime.unwrap(Runtime.java:116)
+	at I_Core.Core.coreRun(Core.idr)
+	at main.Main.lambda$$lbraceAPPLY_0$rbrace$3$389(Main.idr)
+	at io.github.mmhelloworld.idrisjvm.runtime.Runtime.unwrap(Runtime.java:116)
+	at main.Main.$lbracerunMain_0$rbrace(Main.idr)
+	at main.Main.main(Main.idr)
+
 Welcome to Idris 2 version 0.0. Enjoy yourself!
 Main> Bye for now!

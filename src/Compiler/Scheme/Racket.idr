@@ -15,16 +15,20 @@ import Data.Vect
 import System
 import System.Info
 
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
+
 %default covering
 
-firstExists : List String -> IO (Maybe String)
+firstExists : List String -> JVM_IO (Maybe String)
 firstExists [] = pure Nothing
 firstExists (x :: xs) = if !(exists x) then pure (Just x) else firstExists xs
 
-findRacket : IO String
+findRacket : JVM_IO String
 findRacket = pure "/usr/bin/env racket"
 
-findRacoExe : IO String
+findRacoExe : JVM_IO String
 findRacoExe = pure "raco exe"
 
 schHeader : String

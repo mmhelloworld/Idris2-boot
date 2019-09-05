@@ -7,7 +7,7 @@ import Network.Socket.Raw
 
 %cg chez libidris_net.so
 
-runServer : IO (Either String (Port, ThreadID))
+runServer : JVM_IO (Either String (Port, ThreadID))
 runServer = do
   Right sock <- socket AF_INET Stream 0
         | Left fail => pure (Left $ "Failed to open socket: " ++ show fail)
@@ -24,7 +24,7 @@ runServer = do
           pure $ Right (port, forked)
 
   where
-    serve : Port -> Socket -> IO ()
+    serve : Port -> Socket -> JVM_IO ()
     serve port sock = do
       Right (s, _) <- accept sock
         | Left err => putStrLn ("Failed to accept on socket with error: " ++ show err)
@@ -41,7 +41,7 @@ runServer = do
       -- putStrLn ("Server sent " ++ show n ++ " bytes")
       pure ()
 
-runClient : Port -> IO ()
+runClient : Port -> JVM_IO ()
 runClient serverPort = do
   Right sock <- socket AF_INET Stream 0
     | Left fail => putStrLn ("Failed to open socket: " ++ show fail)
@@ -56,7 +56,7 @@ runClient serverPort = do
         | Left err => putStrLn ("Client failed to receive on socket with error: " ++ show err)
       putStrLn ("Received: " ++ str)
 
-main : IO ()
+main : JVM_IO ()
 main = do
   Right (serverPort, tid) <- runServer
     | Left err => putStrLn $ "[server] " ++ err

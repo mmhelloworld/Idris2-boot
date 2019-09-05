@@ -40,7 +40,7 @@ Some language extensions from Idris 1 have not yet been implemented. Most
 notably:
 
 * Type providers
-  - Perhaps consider safety - do we allow arbitrary IO operations, or is
+  - Perhaps consider safety - do we allow arbitrary JVM_IO operations, or is
     there a way to restrict them so that they can't, for example, delete
     files or run executables.
 * Elaborator reflection

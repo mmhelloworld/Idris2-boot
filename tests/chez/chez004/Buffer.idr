@@ -1,7 +1,7 @@
 import Data.Buffer
 import System.File
 
-main : IO ()
+main : JVM_IO ()
 main
     = do buf <- newBuffer 100
          s <- rawSize buf

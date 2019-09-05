@@ -7,5 +7,5 @@ showAverage : String -> String
 showAverage str = "The average word length is: " ++
                   show (average str) ++ "\n"
 
-main : IO ()
+main : JVM_IO ()
 main = repl "Enter a string: " showAverage
