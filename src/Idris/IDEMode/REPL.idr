@@ -32,47 +32,30 @@ import TTImp.TTImp
 import TTImp.ProcessDecls
 
 import Control.Catchable
-import System
-import Idris.Socket
-import Idris.Socket.Data
+-- import System
+-- import Idris.Socket
+-- import Idris.Socket.Data
 
+import IdrisJvm.IO
+import IdrisJvm.File
+import IdrisJvm.System
+
+{-
 export
-socketToFile : Socket -> IO (Either String File)
+socketToFile : Socket -> JVM_IO (Either String File)
 socketToFile (MkSocket f _ _ _) = do
-  file <- map FHandle $ foreign FFI_C "fdopen" (Int -> String -> IO Ptr) f "r+"
+  file <- map FHandle $ foreign FFI_C "fdopen" (Int -> String -> JVM_IO Ptr) f "r+"
   if !(ferror file) then do
     pure (Left "Failed to fdopen socket file descriptor")
   else pure (Right file)
-  
-export
-initIDESocketFile : Int -> IO (Either String File)
-initIDESocketFile p = do
-  osock <- socket AF_INET Stream 0
-  case osock of
-    Left fail => do
-      putStrLn (show fail)
-      putStrLn "Failed to open socket"
-      exit 1
-    Right sock => do
-      res <- bind sock (Just (Hostname "localhost")) p
-      if res /= 0 
-      then 
-        pure (Left ("Failed to bind socket with error: " ++ show res))
-      else do
-        res <- listen sock
-        if res /= 0
-        then
-          pure (Left ("Failed to listen on socket with error: " ++ show res))
-        else do
-          putStrLn (show p)
-          res <- accept sock
-          case res of 
-            Left err => 
-               pure (Left ("Failed to accept on socket with error: " ++ show err))
-            Right (s, _) => 
-               socketToFile s             
+-}
 
-getChar : File -> IO Char
+export
+initIDESocketFile : Int -> JVM_IO (Either String File)
+initIDESocketFile p = socketListenAndAccept p
+
+{-
+getChar : File -> JVM_IO Char
 getChar (FHandle h) = do
   if !(fEOF (FHandle h)) then do
     putStrLn "Alas the file is done, aborting"
@@ -83,16 +66,12 @@ getChar (FHandle h) = do
       putStrLn "Failed to read a character"
       exit 1
     else pure chr
-  
-getFLine : File -> IO String
-getFLine (FHandle h) = do
-  str <- prim_fread h
-  if !(ferror (FHandle h)) then do
-    putStrLn "Failed to read a line"
-    exit 1
-  else pure str
+-}
 
-getNChars : File -> Nat -> IO (List Char)
+getFLine : File -> JVM_IO String
+getFLine file = getLine file
+
+getNChars : File -> Nat -> JVM_IO (List Char)
 getNChars i Z = pure []
 getNChars i (S k)
     = do x <- getChar i 
@@ -125,7 +104,7 @@ toHex m (d :: ds)
 
 -- Read 6 characters. If they're a hex number, read that many characters.
 -- Otherwise, just read to newline
-getInput : File -> IO String
+getInput : File -> JVM_IO String
 getInput f
     = do x <- getNChars f 6
          case toHex 1 (reverse x) of

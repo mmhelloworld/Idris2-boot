@@ -9,6 +9,8 @@ import Core.Normalise
 import Core.TT
 import Core.TTC
 
+import IdrisJvm.IO
+
 -- Additional data we keep about the context to support interactive editing
 
 public export

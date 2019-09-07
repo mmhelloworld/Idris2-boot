@@ -59,11 +59,11 @@ EAGAIN =
 -- ---------------------------------------------------------------- [ Error Code ]
 
 export
-getErrno : IO SocketError
+getErrno : JVM_IO SocketError
 getErrno = cCall Int "idrnet_errno" []
 
 export
-nullPtr : Ptr -> IO Bool
+nullPtr : Ptr -> JVM_IO Bool
 nullPtr p = cCall Bool "isNull" [p]
 
 -- -------------------------------------------------------------- [ Interfaces ]

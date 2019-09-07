@@ -20,7 +20,7 @@ descFn ((x : Nat) -> b) = descNat (b Z)
 descFn (a -> b) = "Function on " ++ desc a
 descFn x = desc x
 
-main : IO ()
+main : JVM_IO ()
 main = do printLn (descFn (Nat -> Nat))
           printLn (descFn ((x : Nat) -> Vect x Int))
           printLn (descFn (Type -> Int))

@@ -1,9 +1,9 @@
 -- %default total
 
 data InfIO : Type where
-     Do : IO a -> (a -> Inf InfIO) -> InfIO
+     Do : JVM_IO a -> (a -> Inf InfIO) -> InfIO
 
-(>>=) : IO a -> (a -> Inf InfIO) -> InfIO
+(>>=) : JVM_IO a -> (a -> Inf InfIO) -> InfIO
 (>>=) = Do
 
 greet : InfIO

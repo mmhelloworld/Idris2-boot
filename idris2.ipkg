@@ -66,9 +66,6 @@ modules =
     Idris.REPLOpts,
     Idris.Resugar,
     Idris.SetOptions,
-    Idris.Socket,
-    Idris.Socket.Data,
-    Idris.Socket.Raw,
     Idris.Syntax,
 
     Parser.Lexer,
@@ -122,10 +119,13 @@ modules =
 
 sourcedir = src
 executable = idris2
+
 -- opts = "--cg-opt -O2 --partial-eval"
 -- opts = "--cg-opt -pg --partial-eval"
-opts = "--partial-eval"
+opts = "--partial-eval --portable-codegen jvm"
 -- opts = "--partial-eval --cg-opt -lws2_32" -- windows
+
+pkgs = idrisjvmffi
 
 main = Idris.Main
 

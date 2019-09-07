@@ -10,7 +10,8 @@ import Idris.CommandLine
 import Idris.REPL
 import Idris.Syntax
 
-import System
+import IdrisJvm.System
+import IdrisJvm.IO
 
 -- TODO: Version numbers on dependencies
 export

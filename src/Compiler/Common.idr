@@ -8,7 +8,8 @@ import Core.TT
 
 import Data.NameMap
 
-%include C "sys/stat.h"
+import IdrisJvm.IO
+import IdrisJvm.File
 
 ||| Generic interface to some code generator
 public export
@@ -104,7 +105,7 @@ findUsedNames tm
 
 ||| check to see if a given file exists
 export
-exists : String -> IO Bool
+exists : String -> JVM_IO Bool
 exists f
     = do Right ok <- openFile f Read
              | Left err => pure False
@@ -113,10 +114,12 @@ exists f
 
 ||| generate a temporary file/name
 export
-tmpName : IO String
-tmpName = foreign FFI_C "tmpnam" (Ptr -> IO String) null
+tmpName : JVM_IO String
+tmpName = getTemporaryFileName
 
+{-
 ||| change the access rights for a file
 export
-chmod : String -> Int -> IO ()
-chmod f m = foreign FFI_C "chmod" (String -> Int -> IO ()) f m
+chmod : String -> Int -> JVM_IO ()
+chmod f m = foreign FFI_C "chmod" (String -> Int -> JVM_IO ()) f m
+-}

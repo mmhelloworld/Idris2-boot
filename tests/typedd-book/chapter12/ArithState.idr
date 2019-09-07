@@ -62,7 +62,7 @@ randoms seed = let seed' = 1664525 * seed + 1013904223 in
                    (seed' `shiftR` 2) :: randoms seed'
 
 runCommand : Stream Int -> GameState -> Command a ->
-             IO (a, Stream Int, GameState)
+             JVM_IO (a, Stream Int, GameState)
 runCommand rnds state (PutStr x) = do putStr x
                                       pure ((), rnds, state)
 runCommand rnds state GetLine = do str <- getLine
@@ -92,7 +92,7 @@ forever : Fuel
 forever = More forever
 
 run : Fuel -> Stream Int -> GameState -> ConsoleIO a ->
-      IO (Maybe a, Stream Int, GameState)
+      JVM_IO (Maybe a, Stream Int, GameState)
 run fuel rnds state (Quit val) = do pure (Just val, rnds, state)
 run (More fuel) rnds state (Do c f)
      = do (res, newRnds, newState) <- runCommand rnds state c
@@ -138,7 +138,7 @@ mutual
                QuitCmd => Quit st
 
 partial
-main : IO ()
+main : JVM_IO ()
 main = do seed <- time
           (Just score, _, state) <-
               run forever (randoms (fromInteger seed)) initState quiz

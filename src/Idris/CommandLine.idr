@@ -1,5 +1,8 @@
 module Idris.CommandLine
 
+import IdrisJvm.IO
+import IdrisJvm.System
+
 %default total
 
 public export
@@ -178,7 +181,7 @@ getOpts opts = parseOpts options opts
 
 
 export covering
-getCmdOpts : IO (Either String (List CLOpt))
+getCmdOpts : JVM_IO (Either String (List CLOpt))
 getCmdOpts = do (_ :: opts) <- getArgs
                     | pure (Left "Invalid command line")
                 pure $ getOpts opts
