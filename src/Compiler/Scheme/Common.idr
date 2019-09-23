@@ -12,11 +12,12 @@ import Data.List
 import Data.Vect
 
 import System.Info
+import IdrisJvm.IO
 
 %default covering
 
 export
-firstExists : List String -> IO (Maybe String)
+firstExists : List String -> JVM_IO (Maybe String)
 firstExists [] = pure Nothing
 firstExists (x :: xs) = if !(exists x) then pure (Just x) else firstExists xs
 

@@ -23,6 +23,6 @@
 *.iml
 classes/**
 *-classes/**
-output
 *.jar
-build/
+output
+build
