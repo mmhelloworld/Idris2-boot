@@ -11,6 +11,8 @@ import Utils.Binary
 
 import Data.NameMap
 
+import System.Info
+
 import IdrisJvm.IO
 import IdrisJvm.File
 

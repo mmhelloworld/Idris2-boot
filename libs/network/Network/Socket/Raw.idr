@@ -34,7 +34,7 @@ sockaddr_free (SAPtr ptr) = cCall () "idrnet_free" [ptr]
 ||| Allocates an amount of memory given by the ByteLength parameter.
 |||
 ||| Used to allocate a mutable pointer to be given to the Recv functions.
-sock_alloc : ByteLength -> IO BufPtr
+sock_alloc : ByteLength -> JVM_IO BufPtr
 sock_alloc bl = map BPtr $ cCall AnyPtr "idrnet_malloc" [bl]
 
 ||| Retrieves the port the given socket is bound to

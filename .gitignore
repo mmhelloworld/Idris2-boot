@@ -16,4 +16,6 @@ src/YafflePaths.idr
 *.iml
 classes/**
 *-classes/**
+*.jar
 output
+build

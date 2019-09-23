@@ -79,8 +79,8 @@ initIDESocketFile h p = do
 -}
 
 export
-initIDESocketFile : Int -> JVM_IO (Either String File)
-initIDESocketFile p = socketListenAndAccept p
+initIDESocketFile : String -> Int -> JVM_IO (Either String File)
+initIDESocketFile host p = socketListenAndAccept host p
 
 {-
 getChar : File -> JVM_IO Char
