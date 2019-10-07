@@ -4,6 +4,6 @@ foo = "ällo"
 ällo : Int
 ällo = 42
 
-main : IO ()
+main : JVM_IO ()
 main = do printLn ällo
           putStrLn "ällo"

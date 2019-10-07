@@ -9,6 +9,7 @@ import Data.Vect
 import IdrisJvm.Data.Buffer
 import IdrisJvm.IO
 import IdrisJvm.File
+import IdrisJvm.Data.Strings
 
 -- Serialising data as binary. Provides an interface TTC which allows
 -- reading and writing to chunks of memory, "Binary", which can be written
@@ -185,8 +186,8 @@ TTC Int where
                  pure val
               else throw (TTCError (EndOfBuffer ("Int " ++ show (loc chunk, size chunk))))
 
-strBytelen : String -> IO Int
-strBytelen = foreign FFI_C "strlen" (String -> IO Int)
+strBytelen : String -> JVM_IO Int
+strBytelen = bytesLengthUtf8
 
 export
 TTC String where
