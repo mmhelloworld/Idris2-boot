@@ -65,8 +65,8 @@ primIO : (1 fn : (1 x : %World) -> IORes a) -> JVM_IO a
 primIO op = MkJVM_IO op
 
 export %inline
-toPrim : (1 act : IO a) -> PrimIO a
-toPrim (MkIO fn) = fn
+toPrim : (1 act : JVM_IO a) -> PrimIO a
+toPrim (MkJVM_IO fn) = fn
 
 export %inline
 schemeCall : (ret : Type) -> String -> (1 args : FArgList) -> JVM_IO ret

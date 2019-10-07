@@ -11,16 +11,15 @@ File error in DoesntExist.idr: java.nio.file.NoSuchFileException: /home/marimuth
 	at io.github.mmhelloworld.idrisjvm.runtime.Util.throwable(Util.java:38)
 	at I_IdrisJvm.I_Files.Files.readFile(Files.idr)
 	at I_Idris.REPL.loadMainFile(REPL.idr)
-	at main.Main.lambda$$lbraceAPPLY_0$rbrace$18$1960(Main.idr)
+	at main.Main.lambda$$lbraceAPPLY_0$rbrace$19$2004(Main.idr)
 	at io.github.mmhelloworld.idrisjvm.runtime.Runtime.unwrap(Runtime.java:116)
 	at main.Main.stMain(Main.idr)
-	at main.Main.lambda$$lbraceAPPLY_0$rbrace$20$2123(Main.idr)
+	at main.Main.lambda$$lbraceAPPLY_0$rbrace$20$2168(Main.idr)
 	at io.github.mmhelloworld.idrisjvm.runtime.Runtime.unwrap(Runtime.java:116)
 	at I_Core.Core.coreRun(Core.idr)
-	at main.Main.lambda$$lbraceAPPLY_0$rbrace$3$442(Main.idr)
+	at main.Main.lambda$$lbraceAPPLY_0$rbrace$4$484(Main.idr)
 	at io.github.mmhelloworld.idrisjvm.runtime.Runtime.unwrap(Runtime.java:116)
 	at main.Main.$lbracerunMain_0$rbrace(Main.idr)
 	at main.Main.main(Main.idr)
 
-Welcome to Idris 2 version 0.0. Enjoy yourself!
 Main> Bye for now!

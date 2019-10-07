@@ -1,5 +1,4 @@
 1/1: Building TypeCase (TypeCase.idr)
-Welcome to Idris 2 version 0.0. Enjoy yourself!
 Main> "Nat"
 "List of Nat"
 "List of Something else"
@@ -11,8 +10,7 @@ Main> "Nat"
 "List of Int"
 43
 42
-1/1: Building TypeCase (TypeCase.idr)
-Main> Main> Main.strangeId is total
+Main> Main.strangeId is total
 Main> Main.strangeId':
 strangeId' _
 Main> Bye for now!

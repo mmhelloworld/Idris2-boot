@@ -13,20 +13,20 @@ prim_applyCharFn : Char -> Int -> (Char -> Int -> PrimIO Char) -> PrimIO Char
 %foreign libcb "applyIntFnPure"
 applyIntFnPure : Int -> Int -> (Int -> Int -> Int) -> Int
 
-applyIntFn : Int -> Int -> (Int -> Int -> IO Int) -> IO Int
+applyIntFn : Int -> Int -> (Int -> Int -> JVM_IO Int) -> JVM_IO Int
 applyIntFn x y fn
     = primIO $ prim_applyIntFn x y (\a, b => toPrim (fn a b))
 
-applyCharFn : Char -> Int -> (Char -> Int -> IO Char) -> IO Char
+applyCharFn : Char -> Int -> (Char -> Int -> JVM_IO Char) -> JVM_IO Char
 applyCharFn x y fn
     = primIO $ prim_applyCharFn x y (\a, b => toPrim (fn a b))
 
-cb : Int -> Int -> IO Int
+cb : Int -> Int -> JVM_IO Int
 cb x y
     = do putStrLn $ "In callback with " ++ show (x, y)
          pure (x + y)
 
-main : IO ()
+main : JVM_IO ()
 main
     = do printLn (add 4 5)
          res <- applyIntFn (add 4 5) 6 (\x, y => do putStrLn "In callback"
