@@ -3,6 +3,7 @@ module Idris.REPL
 import Compiler.Scheme.Chez
 import Compiler.Scheme.Chicken
 import Compiler.Scheme.Racket
+import Compiler.Jvm.Codegen
 import Compiler.Common
 
 import Core.AutoSearch
@@ -223,6 +224,7 @@ findCG
               Chez => pure codegenChez
               Chicken => pure codegenChicken
               Racket => pure codegenRacket
+              Jvm => pure codegenJvm
 
 export
 compileExp : {auto c : Ref Ctxt Defs} ->

@@ -33,7 +33,10 @@ check_version:
 	@echo "Using Idris 1 version: $(IDRIS_VERSION)"
 	@if [ $(shell expr $(IDRIS_VERSION) : $(VALID_IDRIS_VERSION_REGEXP)) -eq 0 ]; then echo "Wrong idris version, expected version matching $(VALID_IDRIS_VERSION_REGEXP)"; exit 1; fi
 
-idris2: src/YafflePaths.idr check_version
+jvmassembler:
+	mvn -f jvm-assembler/pom.xml package
+
+idris2: src/YafflePaths.idr check_version jvmassembler
 	@echo "Building Idris 2 version: $(IDRIS2_VERSION)"
 	idris --build idris2.ipkg
 
@@ -49,7 +52,7 @@ base: prelude
 
 network: prelude
 	make -C libs/network IDRIS2=../../idris2
-	make -C libs/network test IDRIS2=../../idris2
+	# make -C libs/network test IDRIS2=../../idris2
 
 libs : prelude base network
 

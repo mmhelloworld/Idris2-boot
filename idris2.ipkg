@@ -1,6 +1,6 @@
 package idris2
 
-modules = 
+modules =
     Compiler.Common,
     Compiler.CompileExpr,
     Compiler.Inline,
@@ -8,6 +8,11 @@ modules =
     Compiler.Scheme.Chicken,
     Compiler.Scheme.Racket,
     Compiler.Scheme.Common,
+    Compiler.Jvm.Asm,
+    Compiler.Jvm.Codegen,
+    Compiler.Jvm.Core,
+    Compiler.Jvm.Tree,
+    Compiler.Jvm.FunctionTree,
 
     Control.Delayed,
 
@@ -129,7 +134,6 @@ executable = idris2
 opts = "--partial-eval --portable-codegen jvm"
 -- opts = "--partial-eval --cg-opt -lws2_32" -- windows
 
-pkgs = idrisjvmffi
+pkgs = idrisjvmffi, contrib
 
 main = Idris.Main
-

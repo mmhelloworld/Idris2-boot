@@ -34,17 +34,19 @@ public export
 data CG = Chez
         | Chicken
         | Racket
+        | Jvm
 
 export
 Eq CG where
   Chez == Chez = True
   Chicken == Chicken = True
   Racket == Racket = True
+  Jvm == Jvm = True
   _ == _ = False
 
 export
 availableCGs : List (String, CG)
-availableCGs = [("chez", Chez), ("chicken", Chicken), ("racket", Racket)]
+availableCGs = [("chez", Chez), ("chicken", Chicken), ("racket", Racket), ("jvm", Jvm)]
 
 export
 getCG : String -> Maybe CG
@@ -138,7 +140,7 @@ defaultPPrint : PPrinter
 defaultPPrint = MkPPOpts False True False
 
 defaultSession : Session
-defaultSession = MkSessionOpts False False Chez 0 False False
+defaultSession = MkSessionOpts False False Jvm 0 False False
 
 defaultElab : ElabDirectives
 defaultElab = MkElabDirectives True True

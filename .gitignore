@@ -3,7 +3,7 @@
 *.ttc
 *.ttm
 
-idris2
+/idris2
 runtests
 
 docs/_build/
