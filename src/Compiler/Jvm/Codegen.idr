@@ -117,7 +117,7 @@ mutual
   getFArgs (CCon fc _ 1 [ty, val, rest]) = pure $ (ty, val) :: !(getFArgs rest)
   getFArgs arg = throw (GenericMsg (getFC arg) ("Badly formed c call argument list " ++ show arg))
 
-  chezExtPrim : {auto assembler : Assembler} -> Int -> JVars vars -> ExtPrim -> List (CExp vars) -> Core String
+  chezExtPrim : {auto assembler : Assembler} -> Int -> Jvars vars -> ExtPrim -> List (CExp vars) -> Core String
   chezExtPrim i vs CCall [ret, CPrimVal fc (Str fn), fargs, world]
       = do args <- getFArgs fargs
            argTypes <- traverse tySpec (map fst args)

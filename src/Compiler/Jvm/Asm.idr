@@ -1,12 +1,253 @@
 module Compiler.Jvm.Asm
 
-import Core.Name
-import Core.TT
-import Core.FC
+import Compiler.Jvm.Jname
+import Compiler.Jvm.Jvar
+import Compiler.Jvm.TypeDescriptor
+import Compiler.Jvm.Annotation
+import Compiler.Jvm.InferredType
 
 import IdrisJvm.IO
 
 %access public export
+
+data ClassOpts = ComputeMaxs | ComputeFrames
+
+data InvocType = InvokeInterface | InvokeSpecial | InvokeStatic | InvokeVirtual
+
+data FieldInsType = FGetStatic | FPutStatic | FGetField | FPutField
+
+data FrameType = FFull | FSame | FAppend
+
+data Access = Private | Public | Static | Synthetic | Final
+
+Eq Access where
+    Private == Private = True
+    Public == Public = True
+    Static == Static = True
+    Synthetic == Synthetic = True
+    Final == Final = True
+    _ == _ = False
+
+data HandleTag = HGetField
+                 | HGetStatic
+                 | HPutField
+                 | HPutStatic
+                 | HInvokeVirtual
+                 | HInvokeStatic
+                 | HInvokeSpecial
+                 | HNewInvokeSpecial
+                 | HInvokeInterface
+
+record Handle where
+    constructor MkHandle
+    tag : HandleTag
+    hClassName  : String
+    hMethodName : String
+    hDescriptor : String
+    isInterface : Bool
+
+mutual
+    asmRefTyDesc : ReferenceTypeDescriptor -> String
+    asmRefTyDesc (ClassDesc c)       = "L" ++ c ++ ";"
+    asmRefTyDesc (IdrisExportDesc c) = "L" ++ c ++ ";"
+    asmRefTyDesc (InterfaceDesc c)   = "L" ++ c ++ ";"
+    asmRefTyDesc (ArrayDesc ty)   = "[" ++ asmFieldTypeDesc ty
+
+    refTyClassName : ReferenceTypeDescriptor -> String
+    refTyClassName (ClassDesc c)       = c
+    refTyClassName (InterfaceDesc c)   = c
+    refTyClassName (IdrisExportDesc c) = c
+    refTyClassName arr@(ArrayDesc _)   = asmRefTyDesc arr
+
+    asmFieldTypeDesc : FieldTypeDescriptor -> String
+    asmFieldTypeDesc FieldTyDescByte           = "B"
+    asmFieldTypeDesc FieldTyDescChar           = "C"
+    asmFieldTypeDesc FieldTyDescShort          = "S"
+    asmFieldTypeDesc FieldTyDescBoolean        = "Z"
+    asmFieldTypeDesc FieldTyDescDouble         = "D"
+    asmFieldTypeDesc FieldTyDescFloat          = "F"
+    asmFieldTypeDesc FieldTyDescInt            = "I"
+    asmFieldTypeDesc FieldTyDescLong           = "J"
+    asmFieldTypeDesc (FieldTyDescReference f)  = asmRefTyDesc f
+
+asmTypeDesc : TypeDescriptor -> String
+asmTypeDesc (FieldDescriptor t) = asmFieldTypeDesc t
+asmTypeDesc VoidDescriptor      = "V"
+asmTypeDesc (ThrowableDescriptor tyDesc) = asmTypeDesc tyDesc
+
+data MethodDescriptor = MkMethodDescriptor (List FieldTypeDescriptor) TypeDescriptor
+
+asmMethodDesc : MethodDescriptor -> String
+asmMethodDesc (MkMethodDescriptor args returns) = "(" ++ asmArgs ++ ")" ++ r where
+  asmArgs = concat $ asmFieldTypeDesc <$> args
+  r = asmTypeDesc returns
+
+data Asm : Type -> Type where
+    Aaload : Asm ()
+    Aastore : Asm ()
+    Aconstnull : Asm ()
+    Aload : Int -> Asm ()
+    Anewarray : String -> Asm ()
+
+    Anewbooleanarray : Asm ()
+    Anewbytearray : Asm ()
+    Anewchararray : Asm ()
+    Anewshortarray : Asm ()
+    Anewintarray : Asm ()
+    Anewlongarray : Asm ()
+    Anewfloatarray : Asm ()
+    Anewdoublearray : Asm ()
+
+    Arraylength : Asm ()
+    Areturn : Asm ()
+    Astore : Int -> Asm ()
+    Baload : Asm ()
+    Bastore : Asm ()
+    Caload : Asm ()
+    Castore : Asm ()
+    Checkcast : String -> Asm ()
+    ClassCodeStart : Int -> Access -> String -> (Maybe String) -> String -> List String -> List Annotation -> Asm ()
+    ClassCodeEnd : String -> Asm ()
+    CreateClass : ClassOpts -> Asm ()
+    CreateField : List Access -> String -> String -> String -> Maybe String -> Maybe FieldInitialValue -> Asm ()
+    CreateLabel : String -> Asm String
+    CreateMethod : List Access -> String -> String -> String -> Maybe String ->
+                   Maybe (List String) -> List Annotation -> List (List Annotation) -> Asm ()
+    D2i : Asm ()
+    D2f : Asm ()
+    Dadd : Asm ()
+    Daload : Asm ()
+    Dastore : Asm ()
+    Dconst : Double -> Asm ()
+    Ddiv : Asm ()
+    Debug : String -> Asm ()
+    Dload : Int -> Asm ()
+    Dmul : Asm ()
+    Drem : Asm ()
+    Dreturn : Asm ()
+    Dstore : Int -> Asm ()
+    Dsub : Asm ()
+    Dup : Asm ()
+    Error : String -> Asm ()
+    F2d : Asm ()
+    Faload : Asm ()
+    Fastore : Asm ()
+    Fconst : Double -> Asm ()
+    Field : FieldInsType -> String -> String -> String -> Asm ()
+    FieldEnd : Asm ()
+    Fload : Int -> Asm ()
+    Frame : FrameType -> Nat -> (List String) -> Nat -> (List String) -> Asm ()
+    FreshIfIndex : Asm Nat
+    FreshLambdaIndex : String -> Asm Nat
+    FreshSwitchIndex : Asm Nat
+    Freturn : Asm ()
+    Fstore : Int -> Asm ()
+    GetFunctionName : Asm Jname
+    GetFunctionLocTypes : Asm InferredVariables
+    GetFunctionRetType : Asm InferredType
+    GetFunctionTypes : Asm (SortedMap Jname InferredFunctionType)
+    GetLocalVarCount : Asm Nat
+    Goto : String -> Asm ()
+    I2b : Asm ()
+    I2c : Asm ()
+    I2d : Asm ()
+    I2l : Asm ()
+    I2s : Asm ()
+    Iadd : Asm ()
+    Iaload : Asm ()
+    Iand : Asm ()
+    Iastore : Asm ()
+    Ior : Asm ()
+    Ixor : Asm ()
+    Icompl : Asm ()
+    Iconst : Int -> Asm ()
+    Idiv : Asm ()
+    Ifeq : String -> Asm ()
+    Ificmpge : String -> Asm ()
+    Ificmpgt : String -> Asm ()
+    Ificmple : String -> Asm ()
+    Ificmplt : String -> Asm ()
+    Ifnonnull : String -> Asm ()
+    Ifnull : String -> Asm ()
+    Iload : Int -> Asm ()
+    Imul : Asm ()
+    InstanceOf : String -> Asm ()
+    InvokeMethod : InvocType -> String -> String -> String -> Bool -> Asm ()
+    InvokeDynamic : String -> String -> Handle -> List BsmArg -> Asm ()
+    Irem : Asm ()
+    Ireturn : Asm ()
+    Ishl : Asm ()
+    Ishr : Asm ()
+    Istore : Int -> Asm ()
+    Isub : Asm ()
+    Iushr : Asm ()
+    L2i : Asm ()
+    LabelStart : String -> Asm ()
+    Ladd : Asm ()
+    Laload : Asm ()
+    Land : Asm ()
+    Lastore : Asm ()
+    Lor : Asm ()
+    Lxor : Asm ()
+    Lcompl : Asm ()
+    Lconst : Bits64 -> Asm ()
+    Ldc : Constant -> Asm ()
+    Ldiv : Asm ()
+    Lload : Int  -> Asm ()
+    Lmul : Asm ()
+    LookupSwitch : String -> List String -> List Int-> Asm ()
+    Lrem : Asm ()
+    Lreturn : Asm ()
+    Lshl : Asm ()
+    Lshr : Asm ()
+    Lstore : Int -> Asm ()
+    Lsub : Asm ()
+    Lushr : Asm ()
+    MaxStackAndLocal : Int -> Int -> Asm ()
+    MethodCodeStart : Asm ()
+    MethodCodeEnd : Asm ()
+    Multianewarray : String -> Nat -> Asm ()
+    New : String -> Asm ()
+    Pop : Asm ()
+    Pop2 : Asm ()
+    Return : Asm ()
+    Saload : Asm ()
+    Sastore : Asm ()
+    ShouldDescribeFrame : Asm Bool
+    SourceInfo : String -> Asm ()
+    Subroutine : Asm () -> Asm ()
+    UpdateFunctionName : Jname -> Asm ()
+    UpdateFunctionLocTypes : InferredVariables -> Asm ()
+    UpdateFunctionRetType : InferredType -> Asm ()
+    UpdateFunctionTypes : SortedMap Jname InferredFunctionType -> Asm ()
+    UpdateLocalVarCount : Nat -> Asm ()
+    UpdateShouldDescribeFrame : Bool -> Asm ()
+    UpdateSwitchIndex : Nat -> Asm ()
+    UpdateIfIndex : Nat -> Asm ()
+
+    Pure : ty -> Asm ty
+    Bind : Asm a -> (a -> Asm b) -> Asm b
+
+namespace AsmDo
+  (>>=) : Asm a -> (a -> Asm b) -> Asm b
+  (>>=) = Bind
+
+Functor Asm where
+  map f a = Bind a (\a' => Pure $ f a')
+
+Applicative Asm where
+  pure = Pure
+
+  (<*>) f a = Bind f (\f' =>
+              Bind a (\a' =>
+              Pure (f' a')))
+
+updateLocalVarType : Nat -> InferredType -> Asm ()
+updateLocalVarType index ty = do
+    localTypes <- GetFunctionLocTypes
+    mergedTy = maybe ty (\existingTy => if existingTy == ty then ty then inferredObjectType) $
+                SortedMap.lookup index localTypes
+    UpdateFunctionLocTypes $ SortedMap.insert index mergedTy localTypes
 
 namespace Assembler
 
@@ -15,166 +256,3 @@ namespace Assembler
 
     Assembler : Type
     Assembler = JVM_Native AssemblerClass
-
-data Jname = Jqualified String String
-           | Jsimple String
-
-className : Jname -> String
-className (Jqualified cname _) = cname
-className (Jsimple _) = "main/Main"
-
-methodName : Jname -> String
-methodName (Jqualified _ mname) = mname
-methodName (Jsimple mname) = mname
-
-getJmethodName : String -> String
-getJmethodName s = concatMap okchar (unpack s)
-  where
-    okchar : Char -> String
-    okchar ' ' = "$spc"
-    okchar '.' = "$dot"
-    okchar ';' = "$scol"
-    okchar '[' = "$lsq"
-    okchar '/' = "$div"
-    okchar '<' = "$lt"
-    okchar '>' = "$gt"
-    okchar ':' = "$col"
-    okchar c = cast c
-
-getSimpleName : Jname -> String
-getSimpleName (Jsimple n) = n
-getSimpleName (Jqualified q n) = q ++ "/" ++ n
-
-implementation Eq Jname where
-    name1 == name2 = getSimpleName name1 == getSimpleName name2
-
-implementation Ord Jname where
-  compare name1 name2 = compare (getSimpleName name1) (getSimpleName name2)
-
-implementation Show Jname where
-    show = getSimpleName
-
-jvmName : Name -> Jname
-jvmName (NS ns n) = Jqualified (showSep "/" (reverse ns)) $ getSimpleName (jvmName n)
-jvmName (UN n) = Jsimple $ getJmethodName n
-jvmName (MN n i) = Jsimple $ getJmethodName n ++ "$" ++ show i
-jvmName (PV n d) = Jsimple $ "#p" ++ getSimpleName (jvmName n)
-jvmName (DN _ n) = jvmName n
-jvmName (Nested i n) = Jsimple $ "#n" ++ show i ++ "_" ++ getSimpleName (jvmName n)
-jvmName (CaseBlock x y) = Jsimple $ "#c" ++ show x ++ "_" ++ show y
-jvmName (WithBlock x y) = Jsimple $ "#w" ++ show x ++ "_" ++ show y
-jvmName (Resolved i) = Jsimple $ "#r" ++ show i
-
-jvmSimpleName : Name -> String
-jvmSimpleName = getSimpleName . jvmName
-
-data JVar = MkJVar String Nat
-
-jvarIndex : JVar -> Nat
-jvarIndex (MkJVar _ index) = index
-
-jvarName : JVar -> String
-jvarName (MkJVar name _) = name
-
-data JVars : List Name -> Type where
-     Nil  : JVars []
-     (::) : JVar -> JVars ns -> JVars (n :: ns)
-
-extendJVars : Int -> (xs : List Name) -> JVars ns -> JVars (xs ++ ns)
-extendJVars nextVar xs vs = extJVars' nextVar xs vs
-  where
-    extJVars' : Int -> (xs : List Name) -> JVars ns -> JVars (xs ++ ns)
-    extJVars' i [] vs = vs
-    extJVars' i (x :: xs) vs =
-        let name = jvmSimpleName $ MN (jvmSimpleName x) i
-        in MkJVar name (cast i) :: extJVars' (i + 1) xs vs
-
-initJVars : (xs : List Name) -> JVars xs
-initJVars xs = rewrite sym (appendNilRightNeutral xs) in extendJVars 0 xs []
-
-lookupJVar : {idx : Nat} -> .(IsVar n idx xs) -> JVars xs -> JVar
-lookupJVar First (n :: ns) = n
-lookupJVar (Later p) (n :: ns) = lookupJVar p ns
-
-toList : JVars xs -> List JVar
-toList xs = reverse $ go [] xs where
-    go : List JVar -> JVars ys -> List JVar
-    go acc [] = acc
-    go acc (x :: xs) = go (x :: acc) xs
-
-lineSeparator : String
-lineSeparator = unsafePerformIO $ invokeStatic (Class "java/lang/System") "lineSeparator" (JVM_IO String)
-
-startLineNumber : FC -> Int
-startLineNumber = fst . startPos
-
-endLineNumber : FC -> Int
-endLineNumber = fst . endPos
-
-instruction : List String -> String
-instruction = showSep " "
-
-instructions : List (List String) -> String
-instructions xxs = showSep lineSeparator (instruction <$> xxs)
-
-createMethod : Jname -> Nat -> String -> String
-createMethod name nargs body =
-    let cname = className name
-        mname = methodName name
-    in instructions [
-        ["createMethod", cname, mname, show nargs],
-        [body],
-        ["areturn"]
-    ] ++ lineSeparator
-
-lineNumber : Int -> String
-lineNumber 0 = ""
-lineNumber n = "lineNumber " ++ show n
-
-localVariable : String -> Int -> Int -> String
-localVariable _ 0 0 = ""
-localVariable n start end = instruction ["localVariable", show start, show end]
-
-aload : FC -> JVar -> String
-aload fc (MkJVar name var) =
-    let lineStart = startLineNumber fc
-        lineEnd = endLineNumber fc
-
-    in instructions [
-        [lineNumber lineStart],
-        [localVariable name lineStart lineEnd],
-        ["aload", show var]
-    ]
-
-astore : FC -> JVar -> String -> String
-astore fc (MkJVar name var) val =
-    instructions [
-        [val],
-        ["astore", show var]
-    ]
-
-loadVar : JVar -> String
-loadVar (MkJVar _ var) = "aload " ++ show var
-
-lambda : FC -> JVars vars -> String -> String
-lambda fc jvars body =
-    let vars = toList jvars
-        sortedVars = sortBy (\x, y => compare (jvarIndex x) (jvarIndex y)) vars
-        loadedClosures = showSep lineSeparator $ loadVar <$> sortedVars
-    in instructions [
-        [loadedClosures],
-        ["lambda", show (length vars)],
-        [body],
-        ["endLambda"]
-    ]
-
-newBigInteger : String -> String
-newBigInteger "0" = instruction ["field", "getStatic", "java/math/BigInteger", "ZERO", "Ljava/math/BigInteger;"]
-newBigInteger "1" = instruction ["field", "getStatic", "java/math/BigInteger", "ONE", "Ljava/math/BigInteger;"]
-newBigInteger "10" = instruction ["field", "getStatic", "java/math/BigInteger", "TEN", "Ljava/math/BigInteger;"]
-newBigInteger i = instructions [
-  ["new", "java/math/BigInteger"],
-  ["dup"],
-  ["ldc", "StringConst " ++ show i],
-  ["invokeSpecial", "java/math/BigInteger", "<init>", "(Ljava/lang/String;)V", "false"]
-]

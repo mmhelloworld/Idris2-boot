@@ -3,31 +3,9 @@ module Compiler.Jvm.Inference
 import Data.SortedMap
 
 import Compiler.Jvm.Asm
+import Compiler.Jvm.InferredType
 
 %access public export
-
-data InferredType = IBool | IByte | IChar | IShort | IInt | ILong | IFloat | IDouble | IRef String
-                  | IArray InferredType | IUnknown
-
-inferredObjectType : InferredType
-inferredObjectType = IRef "java/lang/Object"
-
-inferredBigIntegerType : InferredType
-inferredBigIntegerType = IRef "java/math/BigInteger"
-
-inferredStringType : InferredType
-inferredStringType = IRef "java/lang/String"
-
-InferredVariables : Type
-InferredVariables = SortedMap Nat InferredType
-
-record InferredFunctionType where
-    constructor MkInferredFunctionType
-    returnType : InferredType
-    variablesType : InferredVariables
-
-InferredFunctionTypes : Type
-InferredFunctionTypes = SortedMap Jname InferredFunctionType
 
 inferConstant : Constant -> InferredType
 inferConstant (I x) = IInt
@@ -47,6 +25,8 @@ record InferenceState where
     constructor MkInferenceState
     currentFunctionInference : InferredVariables
     functionTypes : InferredFunctionTypes
+    caseCounter: Int
+    lambdaCounter: Int
 
 InferredExpressionType : Type
 InferredExpressionType = (InferredType, InferenceState)
@@ -64,10 +44,10 @@ getFunctionType name state = fromMaybe (MkInferredFunctionType inferredObjectTyp
 parameters (c : Ref Ctxt Defs,
             defs: Defs)
     mutual
-        inferConAlt : InferenceState -> Int -> JVars vars -> Nat -> CConAlt vars -> Core InferredExpressionType
+        inferConAlt : InferenceState -> Int -> Jvars vars -> Nat -> CConAlt vars -> Core InferredExpressionType
         inferConAlt {vars} state i vs idrisObj (MkConAlt n tag args sc) = inferExp i vs sc
 
-        inferConstAlt : InferenceState -> Int -> JVars vars -> CConstAlt vars -> Core InferenceState
+        inferConstAlt : InferenceState -> Int -> Jvars vars -> CConstAlt vars -> Core InferenceState
         inferConstAlt state i vs (MkConstAlt c exp) = inferExp i vs exp
 
         -- oops, no traverse for Vect in Core
@@ -76,17 +56,17 @@ parameters (c : Ref Ctxt Defs,
         inferArgs state (arg :: args) = inferArgs (!(inferExp state arg)) args
 
         export
-        inferExp : InferenceState -> Int -> JVars vars -> CExp vars -> Core InferredExpressionType
+        inferExp : InferenceState -> Int -> Jvars vars -> CExp vars -> Core InferredExpressionType
         inferExp state i vs (CLocal fc el) =
-            let var = jvarIndex $ lookupJVar el vs
+            let var = jvarIndex $ lookupJvar el vs
             in pure (getVarType var state, state)
         inferExp state i vs (CLam fc x sc) = do
-            let vsNew = extendJVars i [x] vs
-                state = addVarType i inferredObjectType state
-            in inferExp state (i + 1) vsNew sc
+            let vsNew = extendJvars i [x] vs
+            (lambdaReturnType, state) <- inferExp state (i + 1) vsNew sc
+            pure $ (inferredLambdaType, state)
         inferExp state i vs (CLet fc x val sc) = do
             let (ty, state) <- inferExp state i vs val
-                vsNew = extendJVars i [x] vs
+                vsNew = extendJvars i [x] vs
                 state = addVarType (cast i) ty state
             in inferExp state i vsNew sc
         inferExp (CApp fc (CRef _ f) args) =
@@ -112,7 +92,7 @@ parameters (c : Ref Ctxt Defs,
         inferExp (CConCase fc sc alts@(alt::_) def)
           = do tcode <- inferExp (i+1) vs sc
                defc <- maybe (pure Nothing) (\v => pure (Just !(inferExp v))) def
-               let idrisObj = MkJVar ("sc" ++ show i) (cast i)
+               let idrisObj = MkJvar ("sc" ++ show i) (cast i)
                let idrisObjIndex = jvarIndex idrisObj
                let idrisObjClass = constructorClass alt
                pure $ instructions [
@@ -127,7 +107,7 @@ parameters (c : Ref Ctxt Defs,
         inferExp (CConstCase fc sc alts def)
           = do defc <- maybe (pure Nothing) (\v => pure (Just !(inferExp v))) def
                tcode <- inferExp (i+1) vs sc
-               let ifExpr = MkJVar ("if" ++ show i) (cast i)
+               let ifExpr = MkJvar ("if" ++ show i) (cast i)
                pure $ instructions [
                   [astore fc ifExpr tcode],
                   ["if"],
