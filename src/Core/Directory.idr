@@ -189,14 +189,14 @@ getExecFileName efile
     = do d <- getDirs
          pure $ build_dir d ++ dirSep ++ efile
 
-getEntries : Directory -> IO (List String)
+getEntries : Directory -> JVM_IO (List String)
 getEntries d
     = do Right f <- dirEntry d
              | Left err => pure []
          ds <- assert_total $ getEntries d
          pure (f :: ds)
 
-dirEntries : String -> IO (Either FileError (List String))
+dirEntries : String -> JVM_IO (Either FileError (List String))
 dirEntries dir
     = do Right d <- dirOpen dir
              | Left err => pure (Left err)
@@ -222,7 +222,7 @@ allDirs path (d :: ds)
 -- returns the directory, the ipkg file name, and the directories we've
 -- gone up
 export
-findIpkgFile : IO (Maybe (String, String, List String))
+findIpkgFile : JVM_IO (Maybe (String, String, List String))
 findIpkgFile
     = do dir <- currentDir
          -- 'paths' are the paths to look for an .ipkg, in order
@@ -231,7 +231,7 @@ findIpkgFile
          pure res
   where
     firstIpkg : List (String, List String) ->
-                IO (Maybe (String, String, List String))
+                JVM_IO (Maybe (String, String, List String))
     firstIpkg [] = pure Nothing
     firstIpkg ((d, up) :: ds)
         = do Right files <- dirEntries d

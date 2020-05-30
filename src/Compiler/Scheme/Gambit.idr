@@ -15,19 +15,22 @@ import Utils.Hex
 
 import Data.NameMap
 import Data.Vect
-import System
 import System.Info
+
+import IdrisJvm.IO
+import IdrisJvm.System
+import IdrisJvm.File
 
 %default covering
 
 -- TODO Look for gsi-script, then gsi
-findGSI : IO String
+findGSI : JVM_IO String
 findGSI =
   do env <- getEnv "GAMBIT_GSI"
      pure $ fromMaybe "/usr/bin/env -S gsi" env
 
 -- TODO Look for gsc-script, then gsc
-findGSC : IO String
+findGSC : JVM_IO String
 findGSC =
   do env <- getEnv "GAMBIT_GSC"
      pure $ fromMaybe "/usr/bin/env -S gsc" env

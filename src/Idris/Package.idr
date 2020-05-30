@@ -410,8 +410,8 @@ clean pkg
   where
     delete : String -> Core ()
     delete path = do True <- coreLift $ fRemove path
-                       | False => do err <- coreLift getErrno
-                                     coreLift $ putStrLn $ path ++ ": " ++ show (GenericFileError err)
+                       | False => do -- err <- coreLift getErrno
+                                     coreLift $ putStrLn $ path ++ ": Unable to delete"-- ++ show (GenericFileError err)
                      coreLift $ putStrLn $ "Removed: " ++ path
 
     deleteFolder : String -> List String -> Core ()

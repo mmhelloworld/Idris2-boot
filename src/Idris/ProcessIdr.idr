@@ -162,7 +162,7 @@ addPrelude imps
   = if not (["Prelude"] `elem` map path imps)
        then prelude :: imps
        else imps
-
+{-
 -- The Idris distributed versions don't work on 32 bit systems since they work
 -- with a signed number internally. Oops!
 -- Fix it here, since the fix in Idris makes the RTS incompatible with the
@@ -172,14 +172,11 @@ do_getFileModifiedTime h =
    do vm <- getMyVM
       MkRaw i <- foreign FFI_C "fileModifiedTime32" (Ptr -> Ptr -> IO (Raw Integer)) vm h
       pure i
+-}
 
 export
-fileModifiedTime32 : File -> IO (Either FileError Integer)
-fileModifiedTime32 (FHandle h)
-    = do s <- do_getFileModifiedTime h
-         if (s == -1)
-            then Left <$> getFileError
-            else pure (Right s)
+fileModifiedTime32 : File -> JVM_IO (Either FileError Integer)
+fileModifiedTime32 file = fileModifiedTime file
 
 -- Get a file's modified time. If it doesn't exist, return 0 (that is, it
 -- was last modified at the dawn of time so definitely out of date for

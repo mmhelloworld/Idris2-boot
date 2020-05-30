@@ -63,7 +63,7 @@ getErrno : IO SocketError
 getErrno = cCall Int "idrnet_errno" []
 
 export
-nullPtr : AnyPtr -> JVM_IO Bool
+nullPtr : AnyPtr -> IO Bool
 nullPtr p = cCall Bool "isNull" [p]
 
 -- -------------------------------------------------------------- [ Interfaces ]

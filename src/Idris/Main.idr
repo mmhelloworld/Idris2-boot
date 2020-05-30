@@ -33,8 +33,8 @@ import IdrisJvm.File
 %default covering
 %flag C "-g"
 
-yprefix : String
-yprefix = unsafePerformIO (foreign FFI_C "getIdris2_prefix" (IO String))
+-- yprefix : String
+-- yprefix = unsafePerformIO (foreign FFI_C "getIdris2_prefix" (IO String))
 
 findInput : List CLOpt -> Maybe String
 findInput [] = Nothing

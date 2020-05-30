@@ -29,7 +29,7 @@ VALID_IDRIS_VERSION_REGEXP = "1.3.[2-9].*"
 
 -include custom.mk
 
-.PHONY: ttimp idris2boot idris2-fromc prelude test base clean lib_clean check_version idris2c dist/idris2.c
+.PHONY: ttimp idris2boot idris2-fromc prelude test base clean lib_clean check_version idris2c dist/idris2.c idris2
 
 all: idris2boot libs install-support test
 
@@ -40,7 +40,7 @@ check_version:
 	@echo "Using Idris 1 version: $(IDRIS_VERSION)"
 	@if [ $(shell expr $(IDRIS_VERSION) : $(VALID_IDRIS_VERSION_REGEXP)) -eq 0 ]; then echo "Wrong idris version, expected version matching $(VALID_IDRIS_VERSION_REGEXP)"; exit 1; fi
 
-idris2boot: dist/idris2.c idris2-fromc
+idris2boot: idris2
 
 # Just build the C, assuming already built from Idris source.
 # Separate rule to avoid having to build the C if Idris 1 isn't available.
@@ -64,11 +64,16 @@ dist/idris2.c: src/YafflePaths.idr check_version
 	@cat idris2_prefix.c idris2.c dist/rts/idris_main.c > dist/idris2.c
 	@rm -f idris2.c idris2_prefix.c
 
+idris2: src/YafflePaths.idr check_version
+	@echo "Building Idris 2 version: $(IDRIS2_VERSION_TAG)"
+	idris --build idris2.ipkg
+
 idris2c: dist/idris2.c
 	${MAKE} -C dist
 
 src/YafflePaths.idr:
 	echo 'module YafflePaths; export yversion : ((Nat,Nat,Nat), String); yversion = ((${MAJOR},${MINOR},${PATCH}), "${GIT_SHA1}")' > src/YafflePaths.idr
+	echo 'export yprefix : String; yprefix = "${PREFIX}"' >> src/YafflePaths.idr
 
 prelude:
 	${MAKE} -C libs/prelude IDRIS2=../../idris2boot

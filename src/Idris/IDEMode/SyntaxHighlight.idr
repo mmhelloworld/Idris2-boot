@@ -9,6 +9,8 @@ import Core.TT
 import Idris.REPL
 import Idris.IDEMode.Commands
 
+import IdrisJvm.File
+
 data Decoration : Type where
   Typ : Decoration
   Function : Decoration

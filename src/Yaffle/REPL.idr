@@ -23,6 +23,8 @@ import TTImp.Unelab
 
 import Parser.Support
 
+import IdrisJvm.IO
+
 %default covering
 
 showInfo : (Name, Int, GlobalDef) -> Core ()

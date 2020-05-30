@@ -20,6 +20,11 @@ import System.Info
 
 import IdrisJvm.IO
 import IdrisJvm.File
+import IdrisJvm.Data.Strings
+
+%hide Prelude.Strings.StringBuffer
+%hide Prelude.Strings.newStringBuffer
+%hide Prelude.Strings.getStringFromBuffer
 
 ||| Generic interface to some code generator
 public export
@@ -178,7 +183,7 @@ fastAppend xs
                 build b xs
                 getStringFromBuffer b
   where
-    build : StringBuffer -> List String -> IO ()
+    build : StringBuffer -> List String -> JVM_IO ()
     build b [] = pure ()
     build b (x :: xs) = do addToStringBuffer b x
                            build b xs
