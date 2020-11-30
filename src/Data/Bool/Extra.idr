@@ -36,3 +36,8 @@ public export
 orSameAndRightNeutral : (x, right : Bool) -> x || (x && right) = x
 orSameAndRightNeutral False _ = Refl
 orSameAndRightNeutral True _ = Refl
+
+export
+anyTrue : List Bool -> Bool
+anyTrue [] = False
+anyTrue (x :: xs) = x || anyTrue xs

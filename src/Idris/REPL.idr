@@ -1,5 +1,6 @@
 module Idris.REPL
 
+import Compiler.Jvm.Codegen
 import Compiler.Scheme.Chez
 import Compiler.Scheme.Racket
 import Compiler.Scheme.Gambit
@@ -247,6 +248,7 @@ findCG
               Chez => pure codegenChez
               Racket => pure codegenRacket
               Gambit => pure codegenGambit
+              Jvm => pure codegenJvm
 
 anyAt : (FC -> Bool) -> FC -> a -> Bool
 anyAt p loc y = p loc

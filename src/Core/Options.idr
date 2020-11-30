@@ -35,12 +35,14 @@ public export
 data CG = Chez
         | Racket
         | Gambit
+        | Jvm
 
 export
 Eq CG where
   Chez == Chez = True
   Racket == Racket = True
   Gambit == Gambit = True
+  Jvm == Jvm = True
   _ == _ = False
 
 export
@@ -48,7 +50,8 @@ availableCGs : List (String, CG)
 availableCGs
     = [("chez", Chez),
        ("racket", Racket),
-       ("gambit", Gambit)]
+       ("gambit", Gambit),
+       ("jvm", Jvm)]
 
 export
 getCG : String -> Maybe CG
@@ -150,7 +153,7 @@ defaultPPrint : PPrinter
 defaultPPrint = MkPPOpts False True False
 
 defaultSession : Session
-defaultSession = MkSessionOpts False False False Chez 0 False False
+defaultSession = MkSessionOpts False False False Jvm 0 False False
                                Nothing Nothing Nothing Nothing
 
 defaultElab : ElabDirectives

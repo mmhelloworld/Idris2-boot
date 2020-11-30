@@ -30,6 +30,13 @@ import IdrisJvm.IO
 import IdrisJvm.System
 import IdrisJvm.File
 
+import Compiler.Jvm.Optimizer
+import Compiler.Jvm.InferredType
+import Compiler.Jvm.Jname
+import Core.FC
+import Core.CompileExpr
+import Data.SortedMap
+
 %default covering
 %flag C "-g"
 

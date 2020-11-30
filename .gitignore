@@ -26,3 +26,8 @@ classes/**
 *.jar
 output
 build
+/idris2
+
+target
+*.class
+*-pom.xml

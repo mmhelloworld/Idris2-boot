@@ -5,6 +5,12 @@ import IdrisJvm.IO
 import IdrisJvm.File
 import IdrisJvm.System
 
+%hide Prelude.File.File
+%hide Prelude.File.FileError
+%hide Prelude.File.FileNotFound
+%hide Prelude.File.FileReadError
+%hide Prelude.File.Directory
+
 %default covering
 
 ------------------------------------------------------------------------
@@ -199,11 +205,6 @@ runTest opts testPath
                      | Left err => do print err
                                       pure False
                  Right exp <- readFile "expected"
-                     | Left FileNotFound => do
-                         if interactive opts
-                           then mayOverwrite Nothing out
-                           else print FileNotFound
-                         pure False
                      | Left err => do print err
                                       pure False
 

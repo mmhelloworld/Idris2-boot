@@ -11,6 +11,22 @@ modules =
     Compiler.CompileExpr,
     Compiler.Inline,
     Compiler.LambdaLift,
+
+    Compiler.Jvm.Asm,
+    Compiler.Jvm.Codegen,
+    Compiler.Jvm.ExtPrim,
+    Compiler.Jvm.FunctionTree,
+    Compiler.Jvm.Optimizer,
+    Compiler.Jvm.InferredType,
+    Compiler.Jvm.Jname,
+    Compiler.Jvm.Jvar,
+    Compiler.Jvm.MockAsm,
+    Compiler.Jvm.Variable,
+    Compiler.Jvm.ShowUtil,
+    Compiler.Jvm.Tree,
+    Compiler.Jvm.Foreign,
+    Compiler.Jvm.Tuples,
+
     Compiler.Scheme.Chez,
     Compiler.Scheme.Racket,
     Compiler.Scheme.Gambit,
@@ -141,6 +157,6 @@ sourcedir = src
 executable = idris2
 opts = "--partial-eval --portable-codegen jvm"
 
-pkgs = idrisjvmffi
+pkgs = idrisjvmffi, contrib
 
 main = Idris.Main

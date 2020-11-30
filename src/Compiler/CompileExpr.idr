@@ -12,6 +12,8 @@ import Core.Value
 import Data.NameMap
 import Data.Vect
 
+import IdrisJvm.IO
+
 %default covering
 
 data Args

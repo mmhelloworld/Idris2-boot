@@ -11,6 +11,8 @@ import Data.LengthMatch
 import Data.NameMap
 import Data.Vect
 
+import IdrisJvm.IO
+
 %default covering
 
 data EEnv : List Name -> List Name -> Type where
