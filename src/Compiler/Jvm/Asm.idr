@@ -200,7 +200,7 @@ data Asm : Type -> Type where
                     (signature: Maybe String) -> (exceptions: Maybe (List String)) ->
                     (annotations: List Asm.Annotation) ->
                     (parameterAnnotations: List (List Asm.Annotation)) -> Asm ()
-    CreateIdrisConstructorClass : String -> Nat -> Asm ()
+    CreateIdrisConstructorClass : String -> Bool -> Nat -> Asm ()
     D2i : Asm ()
     D2f : Asm ()
     Dadd : Asm ()
@@ -930,7 +930,7 @@ isThunkType ty = ty == intThunkType || ty == doubleThunkType || ty == thunkType
 
 shouldDebug : Bool
 shouldDebug =
-    let shouldDebugProperty = unsafePerformIO $ System.getPropertyWithDefault "IDRIS_JVM_DEBUG" ""
+    let shouldDebugProperty = unsafePerformIO $ System.getPropertyWithDefault "IDRIS_JVM_DEBUG_ASM" ""
     in shouldDebugProperty == "true"
 
 runAsm : AsmState -> Asm a -> Core (a, AsmState)
@@ -1033,9 +1033,9 @@ runAsm state (CreateMethod accs sourceFileName className methodName desc sig exc
             (believe_me janns)
             (believe_me jparamAnns)
 
-runAsm state (CreateIdrisConstructorClass className constructorParameterCount) =
-    assemble state $ invokeInstance "createIdrisConstructorClass" (Assembler -> String -> Int -> JVM_IO ())
-        (assembler state) className (cast constructorParameterCount)
+runAsm state (CreateIdrisConstructorClass className isStringConstructor constructorParameterCount) =
+    assemble state $ invokeInstance "createIdrisConstructorClass" (Assembler -> String -> Bool -> Int -> JVM_IO ())
+        (assembler state) className isStringConstructor (cast constructorParameterCount)
 
 runAsm state D2i = assemble state $ invokeInstance "d2i" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state D2f = assemble state $ invokeInstance "d2f" (Assembler -> JVM_IO ()) (assembler state)
@@ -1047,10 +1047,8 @@ runAsm state (Dconst n) =
 runAsm state Daload = assemble state $ invokeInstance "daload" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Dastore = assemble state $ invokeInstance "dastore" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Ddiv = assemble state $ invokeInstance "ddiv" (Assembler -> JVM_IO ()) (assembler state)
-
-runAsm state (Debug msg) =
-    assemble state $ putStrLn msg
-
+runAsm state (Debug message) =
+    assemble state $ invokeInstance "debug" (Assembler -> String -> JVM_IO ()) (assembler state) message
 runAsm state (Dload n) =
     assemble state $ invokeInstance "dload" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
 runAsm state Dmul = assemble state $ invokeInstance "dmul" (Assembler -> JVM_IO ()) (assembler state)

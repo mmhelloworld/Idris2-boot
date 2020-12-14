@@ -21,7 +21,7 @@ applyCharFn : Char -> Int -> (Char -> Int -> JVM_IO Char) -> JVM_IO Char
 applyCharFn x y fn
     = primIO $ prim_applyCharFn x y (\a, b => toPrim (fn a b))
 
-cb : Int -> Int -> JVM_IO Int
+cb : Int -> Int -> IO Int
 cb x y
     = do putStrLn $ "In callback with " ++ show (x, y)
          pure (x + y)

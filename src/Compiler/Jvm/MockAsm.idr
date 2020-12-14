@@ -107,8 +107,9 @@ mockRunAsm state (CreateMethod accs sourceFileName className methodName desc sig
             methodName,
             desc]
 
-mockRunAsm state (CreateIdrisConstructorClass className constructorParameterCount) =
-    assemble state $ putStrLn ("CreateIdrisConstructorClass " ++ className ++ " " ++ show constructorParameterCount)
+mockRunAsm state (CreateIdrisConstructorClass className isStringConstructor constructorParameterCount) =
+    assemble state $ putStrLn ("CreateIdrisConstructorClass " ++ className ++ " " ++
+        show isStringConstructor ++ " " ++ show constructorParameterCount)
 
 mockRunAsm state D2i = assemble state $ putStrLn "d2i"
 mockRunAsm state D2f = assemble state $ putStrLn "d2f"
@@ -120,7 +121,7 @@ mockRunAsm state Daload = assemble state $ putStrLn "daload"
 mockRunAsm state Dastore = assemble state $ putStrLn "dastore"
 mockRunAsm state Ddiv = assemble state $ putStrLn "ddiv"
 
-mockRunAsm state (Debug msg) = assemble state $ putStrLn msg
+mockRunAsm state (Debug message) = assemble state $ putStrLn message
 
 mockRunAsm state (Dload n) =
     assemble state $ putStrLn $ "dload " ++ show n

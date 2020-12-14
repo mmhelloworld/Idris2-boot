@@ -185,7 +185,12 @@ asmCast IChar ty = if isThunkType ty then thunkInt else boxChar
 
 asmCast IShort ty = if isThunkType ty then thunkInt else boxShort
 
-asmCast IInt ty = if isThunkType ty then thunkInt else boxInt
+asmCast IInt ty =
+    if isThunkType ty then thunkInt
+    else if ty == inferredBigIntegerType then do
+        I2l
+        InvokeMethod InvokeStatic "java/math/BigInteger" "valueOf" "(J)Ljava/math/BigInteger;" False
+    else boxInt
 
 asmCast ILong ty = boxLong
 

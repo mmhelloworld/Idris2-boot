@@ -42,7 +42,8 @@ mutual
     showNamedCExp n (NmConCase fc sc xs def) = "\n" ++
         indent n ("constructorswitch" ++ "(" ++ showNamedCExp n sc ++ ") \n") ++
             showSep "\n" (showNamedConAlt (n + 1) <$> xs) ++
-                maybe "" (\defExp => "\n" ++ indent (n + 1) "default:\n" ++ indent n (showNamedCExp (n + 2) defExp)) def
+                maybe "" (\defExp => "\n" ++ indent (n + 1) "default:\n" ++
+                    indent (n + 1) (showNamedCExp (n + 1) defExp)) def
     showNamedCExp n (NmConstCase fc sc xs def) = "\n" ++
         indent n ("constantswitch" ++"(" ++ show sc ++ ")\n") ++
             showSep "\n" (showNamedConstAlt (n + 1) <$> xs) ++

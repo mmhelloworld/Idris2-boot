@@ -66,8 +66,9 @@ enterScope : (shouldAddLineNumber: Bool) -> Asm ()
 enterScope shouldAddLineNumber = do
     scopeIndex <- freshScopeIndex
     updateCurrentScopeIndex scopeIndex
+    scope <- getScope scopeIndex
+    Debug $ "Entering scope " ++ show scope
     when shouldAddLineNumber $ do
-        scope <- getScope scopeIndex
         let lineNumberStart = fst $ lineNumbers scope
         label <- freshLabel
         CreateLabel label
@@ -123,15 +124,10 @@ constantAltIntExpr fc alt@(MkNConstAlt constant _) = do
         label <- freshLabel
         Pure (label, constExpr, alt)
 
-constantAltHashCodeExpr : FC -> (Nat, NamedConstAlt) -> Asm (Int, Nat, NamedConstAlt)
-constantAltHashCodeExpr fc positionAndAlt@(position, MkNConstAlt constant _) = do
-        constExpr <- hashCode constant
-        Pure (constExpr, position, snd positionAndAlt)
-    where
-        hashCode : TT.Constant -> Asm Int
-        hashCode (BI value) = LiftIo $ invokeInstance "hashCode" (Integer -> JVM_IO Int) value
-        hashCode (Str value) = LiftIo $ invokeInstance "hashCode" (String -> JVM_IO Int) value
-        hashCode x = Throw fc ("Constant " ++ show x ++ " cannot be compiled to 'Switch'.")
+hashCode : TT.Constant -> Asm (Maybe Int)
+hashCode (BI value) = LiftIo $ (Just <$> invokeInstance "hashCode" (Integer -> JVM_IO Int) value)
+hashCode (Str value) = LiftIo $ (Just <$> invokeInstance "hashCode" (String -> JVM_IO Int) value)
+hashCode x = Pure Nothing
 
 getHashCodeSwitchClass : FC -> InferredType -> Asm String
 getHashCodeSwitchClass fc constantType =
@@ -146,9 +142,15 @@ assembleHashCodeSwitchConstant fc constant =
     Throw fc $ "Constant " ++ show constant ++ " cannot be compiled to 'switch'"
 
 conAltIntExpr : NamedConAlt -> Asm (String, Int, NamedConAlt)
-conAltIntExpr alt@(MkNConAlt _ tag _ expr) = do
+conAltIntExpr alt@(MkNConAlt name tag _ expr) = do
     label <- freshLabel
-    Pure (label, fromMaybe 0 tag, alt)
+    intValue <- maybe (Throw emptyFC $ "Missing constructor tag " ++ show name) Pure tag
+    Pure (label, intValue, alt)
+
+conAltStringExpr : NamedConAlt -> Asm (String, String, NamedConAlt)
+conAltStringExpr alt@(MkNConAlt name tag _ expr) = do
+    label <- freshLabel
+    Pure (label, jvmSimpleName name, alt)
 
 createDefaultLabel : String -> Maybe NamedCExp -> Asm String
 createDefaultLabel switchEndLabel Nothing = Pure switchEndLabel
@@ -165,6 +167,13 @@ getSwitchCasesWithEndLabel switchCases labelStarts switchEndLabel =
         go : List ((String, Int, a), String) -> List (String, Int, a, String)
         go (((labelStart, constExpr, body), labelEnd) :: xs) = (labelStart, constExpr, body, labelEnd) :: go xs
         go [] = []
+
+labelHashCodeAlt : (Int, a) -> Asm (String, Int, a)
+labelHashCodeAlt (hash, expressions) = Pure (!freshLabel, hash, expressions)
+
+getHashCodeCasesWithLabels : SortedMap Int (List (Nat, a)) ->
+    Asm (List (String, Int, List (Nat, a)))
+getHashCodeCasesWithLabels positionAndAltsByHash = traverse labelHashCodeAlt $ SortedMap.toList positionAndAltsByHash
 
 mutual
     assembleExpr : (ret : Asm ()) -> InferredType -> NamedCExp -> Asm ()
@@ -229,15 +238,16 @@ mutual
     assembleExpr ret returnType expr@(NmCon fc name tag args) = do
         let fileName = fst $ getSourceLocation expr
         let constructorClassName = jvmSimpleName name
+        let constructorType = maybe inferredStringType (const IInt) tag
         New constructorClassName
         Dup
-        Iconst $ fromMaybe 0 tag
+        maybe (Ldc . StringConst $ constructorClassName) Iconst tag
         let constructorParameterCount = length args
-        let constructorTypes = IInt :: replicate constructorParameterCount inferredObjectType
+        let constructorTypes = constructorType :: replicate constructorParameterCount inferredObjectType
         let argsWithTypes = List.zip args $ drop 1 constructorTypes
         traverse assembleParameter argsWithTypes
         let descriptor = getMethodDescriptor $ MkInferredFunctionType IVoid constructorTypes
-        CreateIdrisConstructorClass constructorClassName constructorParameterCount
+        CreateIdrisConstructorClass constructorClassName (isNothing tag) constructorParameterCount
         InvokeMethod InvokeSpecial constructorClassName "<init>" descriptor False
         asmCast (IRef constructorClassName) returnType
         ret
@@ -268,9 +278,14 @@ mutual
         let idrisObjectVariableName = "constructorSwitchValue" ++ show !freshDynamicVariableIndex
         idrisObjectVariableIndex <- getVariableIndex idrisObjectVariableName
         assembleExpr (storeVar idrisObjectType idrisObjectType idrisObjectVariableIndex) idrisObjectType sc
+        let hasTypeCase = any isTypeCase alts
+        let constructorType = if hasTypeCase then "Ljava/lang/String;" else "I"
         loadVar !getVariableTypes idrisObjectType idrisObjectType idrisObjectVariableIndex
-        InvokeMethod InvokeInterface idrisObjectClass "getConstructorId" "()I" True
-        assembleConstructorSwitch ret returnType fc idrisObjectVariableIndex alts def
+        let constructorGetter = if hasTypeCase then "getStringConstructorId" else "getConstructorId"
+        InvokeMethod InvokeInterface idrisObjectClass constructorGetter ("()" ++ constructorType) True
+        if hasTypeCase then
+            assembleStringConstructorSwitch ret returnType fc idrisObjectVariableIndex alts def
+        else assembleConstructorSwitch ret returnType fc idrisObjectVariableIndex alts def
     assembleExpr ret returnType (NmConstCase fc sc [] Nothing) = do defaultValue returnType; ret
     assembleExpr ret returnType (NmConstCase fc sc [] (Just expr)) = assembleExpr ret returnType expr
     assembleExpr ret returnType (NmConstCase fc sc alts@(_ :: _) def) = do
@@ -413,7 +428,6 @@ mutual
             InvokeMethod InvokeVirtual "java/lang/StringBuilder" "toString" "()Ljava/lang/String;" False
             asmCast inferredStringType returnType
 
-    
     assembleExprOp : Asm () -> InferredType -> FC -> PrimFn arity -> Vect arity NamedCExp -> Asm ()
     assembleExprOp ret returnType fc (Add IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Iadd x y
     assembleExprOp ret returnType fc (Sub IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Isub x y
@@ -869,8 +883,7 @@ mutual
             switchEndLabel <- freshLabel
             CreateLabel switchEndLabel
             traverse_ CreateLabel labels
-            assembleExpr (storeVar constantType constantType !(getVariableIndex constantExprVariableName))
-                constantType sc
+            assembleExpr (storeVar constantType constantType constantExprVariableIndex) constantType sc
             constantClass <- getHashCodeSwitchClass fc constantType
             Iconst (-1)
             storeVar IInt IInt hashCodePositionVariableIndex
@@ -888,8 +901,11 @@ mutual
             assembleConstantSwitch ret returnType IInt fc (NmLocal fc $ UN hashCodePositionVariableName)
                 (hashPositionSwitchAlts hashPositionAndAlts) def
         where
-            labelHashCodeAlt : (Int, a) -> Asm (String, Int, a)
-            labelHashCodeAlt (hash, expressions) = Pure (!freshLabel, hash, expressions)
+            constantAltHashCodeExpr : FC -> (Nat, NamedConstAlt) -> Asm (Int, Nat, NamedConstAlt)
+            constantAltHashCodeExpr fc positionAndAlt@(position, MkNConstAlt constant _) = do
+                Just hashCodeValue <- hashCode constant
+                    | Nothing => Throw fc ("Constant " ++ show constant ++ " cannot be compiled to 'Switch'.")
+                Pure (hashCodeValue, position, snd positionAndAlt)
 
             hashPositionSwitchAlts : List (Int, Nat, NamedConstAlt) -> List NamedConstAlt
             hashPositionSwitchAlts exprPositionAlts = reverse $ go [] exprPositionAlts where
@@ -898,49 +914,43 @@ mutual
                 go acc ((_, position, (MkNConstAlt _ expr)) :: alts) =
                     go (MkNConstAlt (I $ cast position) expr :: acc) alts
 
-            getHashCodeCasesWithLabels : SortedMap Int (List (Nat, NamedConstAlt)) ->
-                Asm (List (String, Int, List (Nat, NamedConstAlt)))
-            getHashCodeCasesWithLabels positionAndAltsByHash =
-                traverse labelHashCodeAlt $ SortedMap.toList positionAndAltsByHash
-
             assembleHashCodeSwitchCases : FC -> String -> Nat -> Nat -> String ->
                 (String, Int, List (Nat, NamedConstAlt)) -> Asm ()
             assembleHashCodeSwitchCases fc _ _ _ _ (_, _, []) = Throw fc "Empty cases"
             assembleHashCodeSwitchCases fc constantClass constantExprVariableIndex hashCodePositionVariableIndex
-                switchEndLabel (label, _, positionAndAlts) =
-                    go label positionAndAlts where
-                        go : String -> List (Nat, NamedConstAlt) -> Asm ()
-                        go _ [] = Pure ()
-                        go label (positionAndAlt :: nextPositionAndAlt :: positionAndAlts) = do
-                            let (position, (MkNConstAlt constant _)) = positionAndAlt
-                            scope <- getScope !getCurrentScopeIndex
-                            let lineNumberStart = fst $ lineNumbers scope
-                            LabelStart switchEndLabel
-                            addLineNumber lineNumberStart switchEndLabel
-                            LabelStart label
-                            addLineNumber lineNumberStart label
-                            loadVar !getVariableTypes constantType constantType constantExprVariableIndex
-                            assembleHashCodeSwitchConstant fc constant
-                            InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
-                            nextLabel <- freshLabel
-                            Ifeq nextLabel
-                            Iconst $ cast position
-                            storeVar IInt IInt hashCodePositionVariableIndex
-                            Goto switchEndLabel
-                            go nextLabel (nextPositionAndAlt :: positionAndAlts)
-                        go label (positionAndAlt :: []) = do
-                            let (position, (MkNConstAlt constant _)) = positionAndAlt
-                            scope <- getScope !getCurrentScopeIndex
-                            let lineNumberStart = fst $ lineNumbers scope
-                            LabelStart label
-                            addLineNumber lineNumberStart label
-                            loadVar !getVariableTypes constantType constantType constantExprVariableIndex
-                            assembleHashCodeSwitchConstant fc constant
-                            InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
-                            Ifeq switchEndLabel
-                            Iconst $ cast position
-                            storeVar IInt IInt hashCodePositionVariableIndex
-                            Goto switchEndLabel
+                switchEndLabel (label, _, positionAndAlts) = go label positionAndAlts where
+                    go : String -> List (Nat, NamedConstAlt) -> Asm ()
+                    go _ [] = Pure ()
+                    go label (positionAndAlt :: nextPositionAndAlt :: positionAndAlts) = do
+                        let (position, (MkNConstAlt constant _)) = positionAndAlt
+                        scope <- getScope !getCurrentScopeIndex
+                        let lineNumberStart = fst $ lineNumbers scope
+                        LabelStart switchEndLabel
+                        addLineNumber lineNumberStart switchEndLabel
+                        LabelStart label
+                        addLineNumber lineNumberStart label
+                        loadVar !getVariableTypes constantType constantType constantExprVariableIndex
+                        assembleHashCodeSwitchConstant fc constant
+                        InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
+                        nextLabel <- freshLabel
+                        Ifeq nextLabel
+                        Iconst $ cast position
+                        storeVar IInt IInt hashCodePositionVariableIndex
+                        Goto switchEndLabel
+                        go nextLabel (nextPositionAndAlt :: positionAndAlts)
+                    go label (positionAndAlt :: []) = do
+                        let (position, (MkNConstAlt constant _)) = positionAndAlt
+                        scope <- getScope !getCurrentScopeIndex
+                        let lineNumberStart = fst $ lineNumbers scope
+                        LabelStart label
+                        addLineNumber lineNumberStart label
+                        loadVar !getVariableTypes constantType constantType constantExprVariableIndex
+                        assembleHashCodeSwitchConstant fc constant
+                        InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
+                        Ifeq switchEndLabel
+                        Iconst $ cast position
+                        storeVar IInt IInt hashCodePositionVariableIndex
+                        Goto switchEndLabel
 
     assembleConCaseExpr : Asm () -> InferredType -> Nat -> Name -> List Name -> NamedCExp -> Asm ()
     assembleConCaseExpr ret returnType idrisObjectVariableIndex name args expr = do
@@ -962,7 +972,8 @@ mutual
                     storeVar inferredObjectType !(getVariableType variableName) variableIndex
                 bindArg (index + 1) vars
 
-    assembleConstructorSwitch : Asm () -> InferredType -> FC -> Nat -> List NamedConAlt -> Maybe NamedCExp -> Asm ()
+    assembleConstructorSwitch : Asm () -> InferredType -> FC -> Nat -> List NamedConAlt ->
+        Maybe NamedCExp -> Asm ()
     assembleConstructorSwitch ret returnType fc idrisObjectVariableIndex alts def = do
             switchCases <- getCasesWithLabels alts
             let labels = fst <$> switchCases
@@ -1015,6 +1026,94 @@ mutual
                 assembleCaseWithScope labelStart labelEnd name args expr
                 Goto switchEndLabel
 
+        assembleStringConstructorSwitch : Asm () -> InferredType -> FC -> Nat -> List NamedConAlt ->
+                Maybe NamedCExp -> Asm ()
+        assembleStringConstructorSwitch ret returnType fc idrisObjectVariableIndex alts def = do
+            constantExprVariableSuffixIndex <- freshDynamicVariableIndex
+            let constantExprVariableName = "constructorCaseExpr" ++ show constantExprVariableSuffixIndex
+            constantExprVariableIndex <- getVariableIndex constantExprVariableName
+            storeVar inferredStringType inferredStringType constantExprVariableIndex
+            hashCodePositionVariableSuffixIndex <- freshDynamicVariableIndex
+            let hashCodePositionVariableName = "hashCodePosition" ++ show hashCodePositionVariableSuffixIndex
+            hashCodePositionVariableIndex <- getVariableIndex hashCodePositionVariableName
+            hashPositionAndAlts <- traverse (conAltHashCodeExpr fc) $ List.zip [0 .. length $ drop 1 alts] alts
+            let positionAndAltsByHash = multiValueMap fst snd hashPositionAndAlts
+            hashCodeSwitchCases <- getHashCodeCasesWithLabels positionAndAltsByHash
+            let labels = fst <$> hashCodeSwitchCases
+            let exprs = second <$> hashCodeSwitchCases
+            switchEndLabel <- freshLabel
+            CreateLabel switchEndLabel
+            traverse_ CreateLabel labels
+            let constantType = inferredStringType
+            constantClass <- getHashCodeSwitchClass fc constantType
+            Iconst (-1)
+            storeVar IInt IInt hashCodePositionVariableIndex
+            loadVar !getVariableTypes constantType constantType constantExprVariableIndex
+            InvokeMethod InvokeVirtual constantClass "hashCode" "()I" False
+            LookupSwitch switchEndLabel labels exprs
+            traverse_
+                (assembleHashCodeSwitchCases fc constantClass constantExprVariableIndex hashCodePositionVariableIndex
+                    switchEndLabel)
+                hashCodeSwitchCases
+            scope <- getScope !getCurrentScopeIndex
+            let lineNumberStart = fst $ lineNumbers scope
+            LabelStart switchEndLabel
+            addLineNumber lineNumberStart switchEndLabel
+            assembleExpr (Pure ()) IInt (NmLocal fc $ UN hashCodePositionVariableName)
+            assembleConstructorSwitch ret returnType fc idrisObjectVariableIndex
+                (hashPositionSwitchAlts hashPositionAndAlts) def
+        where
+            conAltHashCodeExpr : FC -> (Nat, NamedConAlt) -> Asm (Int, Nat, NamedConAlt)
+            conAltHashCodeExpr fc positionAndAlt@(position, MkNConAlt name _ _ _) = do
+                Just hashCodeValue <- hashCode (Str $ jvmSimpleName name)
+                    | Nothing => Throw fc ("Constructor " ++ show name ++ " cannot be compiled to 'Switch'.")
+                Pure (hashCodeValue, position, snd positionAndAlt)
+
+            hashPositionSwitchAlts : List (Int, Nat, NamedConAlt) -> List NamedConAlt
+            hashPositionSwitchAlts exprPositionAlts = reverse $ go [] exprPositionAlts where
+                go : List NamedConAlt -> List (Int, Nat, NamedConAlt) -> List NamedConAlt
+                go acc [] = acc
+                go acc ((_, position, (MkNConAlt name _ args expr)) :: alts) =
+                    go (MkNConAlt name (Just $ cast position) args expr :: acc) alts
+
+            assembleHashCodeSwitchCases : FC -> String -> Nat -> Nat -> String ->
+                (String, Int, List (Nat, NamedConAlt)) -> Asm ()
+            assembleHashCodeSwitchCases fc _ _ _ _ (_, _, []) = Throw fc "Empty cases"
+            assembleHashCodeSwitchCases fc constantClass constantExprVariableIndex hashCodePositionVariableIndex
+                switchEndLabel (label, _, positionAndAlts) = go label positionAndAlts where
+                    go : String -> List (Nat, NamedConAlt) -> Asm ()
+                    go _ [] = Pure ()
+                    go label (positionAndAlt :: nextPositionAndAlt :: positionAndAlts) = do
+                        let (position, (MkNConAlt name _ _ _)) = positionAndAlt
+                        scope <- getScope !getCurrentScopeIndex
+                        let lineNumberStart = fst $ lineNumbers scope
+                        LabelStart switchEndLabel
+                        addLineNumber lineNumberStart switchEndLabel
+                        LabelStart label
+                        addLineNumber lineNumberStart label
+                        loadVar !getVariableTypes inferredStringType inferredStringType constantExprVariableIndex
+                        Ldc $ StringConst $ jvmSimpleName name
+                        InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
+                        nextLabel <- freshLabel
+                        Ifeq nextLabel
+                        Iconst $ cast position
+                        storeVar IInt IInt hashCodePositionVariableIndex
+                        Goto switchEndLabel
+                        go nextLabel (nextPositionAndAlt :: positionAndAlts)
+                    go label (positionAndAlt :: []) = do
+                        let (position, (MkNConAlt name _ _ _)) = positionAndAlt
+                        scope <- getScope !getCurrentScopeIndex
+                        let lineNumberStart = fst $ lineNumbers scope
+                        LabelStart label
+                        addLineNumber lineNumberStart label
+                        loadVar !getVariableTypes inferredStringType inferredStringType constantExprVariableIndex
+                        Ldc $ StringConst $ jvmSimpleName name
+                        InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
+                        Ifeq switchEndLabel
+                        Iconst $ cast position
+                        storeVar IInt IInt hashCodePositionVariableIndex
+                        Goto switchEndLabel
+
     jvmExtPrim : Asm () -> InferredType -> ExtPrim -> List NamedCExp -> Asm ()
     jvmExtPrim returns returnType JvmStaticMethodCall [ret, NmPrimVal fc (Str fn), fargs, world]
       = do args <- getFArgs fargs
@@ -1050,6 +1149,8 @@ assembleDefinition idrisName fc def@(MkNmFun args expr) = do
         lineNumberLabels = SortedMap.empty }
     updateCurrentFunction $ record { dynamicVariableCounter = 0 }
     let optimizedExpr = optimizedBody function
+    Debug $ "************* " ++ show jname ++ ", " ++ show idrisName ++ "(" ++ show args ++ ")" ++ "*******"
+    Debug $ showNamedCExp 0 optimizedExpr
     CreateMethod [Public, Static] fileName declaringClassName methodName descriptor Nothing Nothing [] []
     MethodCodeStart
     methodStartLabel <- freshLabel
@@ -1066,7 +1167,7 @@ assembleDefinition idrisName fc def@(MkNmFun args expr) = do
         updateScopeStartLabel scopeIndex methodStartLabel
         resultVariableIndex <-
             if hasResultVariable then do
-                resultVariable <- getVariableIndex $ "jvm$fn$res" ++ show !freshDynamicVariableIndex
+                resultVariable <- getVariableIndex $ resultVariablePrefix ++ show !freshDynamicVariableIndex
                 Pure $ Just resultVariable
             else Pure Nothing
         maybe (Pure ())
@@ -1075,7 +1176,7 @@ assembleDefinition idrisName fc def@(MkNmFun args expr) = do
                 storeVar methodReturnType methodReturnType resultVariable)
             resultVariableIndex
         if hasSelfTailCall $ tailCallCategory function then do
-            tailRecursionLoopVariableIndex <- getVariableIndex $ "jvm$rec$loop" ++ show !freshDynamicVariableIndex
+            tailRecursionLoopVariableIndex <- getVariableIndex $ tailRecursionLoopVariablePrefix ++ show !freshDynamicVariableIndex
             Iconst 1
             storeVar IInt IInt tailRecursionLoopVariableIndex
             tailRecStartLabelName <- freshLabel

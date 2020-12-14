@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
+import static java.lang.Boolean.parseBoolean;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
@@ -170,6 +171,7 @@ import static org.objectweb.asm.Opcodes.T_LONG;
 import static org.objectweb.asm.Opcodes.T_SHORT;
 
 public final class Assembler {
+    private static final boolean shouldDebug = parseBoolean(System.getProperty("IDRIS_JVM_DEBUG", "false"));
     private final Map<String, ClassWriter> cws;
     private Map<String, Object> env;
     private ClassWriter cw;
@@ -376,7 +378,8 @@ public final class Assembler {
         handleCreateMethod(mv, annotations, paramAnnotations);
     }
 
-    public void createIdrisConstructorClass(String className, int constructorParameterCount) {
+    public void createIdrisConstructorClass(String className, boolean isStringConstructor,
+                                            int constructorParameterCount) {
         if (!cws.containsKey(className)) {
             ClassWriter cw = new IdrisClassWriter(COMPUTE_MAXS + COMPUTE_FRAMES);
             FieldVisitor fv;
@@ -387,7 +390,8 @@ public final class Assembler {
 
             cw.visitSource(format("IdrisGenerated$%s.idr", className.replaceAll("/", "\\$")), null);
 
-            fv = cw.visitField(ACC_PRIVATE + ACC_FINAL, "constructorId", "I", null, null);
+            String constructorFieldDescriptor = isStringConstructor ? "Ljava/lang/String;" : "I";
+            fv = cw.visitField(ACC_PRIVATE + ACC_FINAL, "constructorId", constructorFieldDescriptor, null, null);
             fv.visitEnd();
 
             for (int index = 0; index < constructorParameterCount; index++) {
@@ -395,15 +399,15 @@ public final class Assembler {
                 fv.visitEnd();
             }
 
-            String constructorDescriptor = format("(I%s)V",
+            String constructorDescriptor = format("(%s%s)V", constructorFieldDescriptor,
                 Stream.fill(constructorParameterCount, "Ljava/lang/Object;").mkString());
             mv = cw.visitMethod(ACC_PUBLIC, "<init>", constructorDescriptor, null, null);
             mv.visitCode();
             mv.visitVarInsn(ALOAD, 0);
             mv.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
             mv.visitVarInsn(ALOAD, 0);
-            mv.visitVarInsn(ILOAD, 1);
-            mv.visitFieldInsn(PUTFIELD, className, "constructorId", "I");
+            mv.visitVarInsn(isStringConstructor ? ALOAD : ILOAD, 1);
+            mv.visitFieldInsn(PUTFIELD, className, "constructorId", constructorFieldDescriptor);
             for (int index = 0; index < constructorParameterCount; index++) {
                 mv.visitVarInsn(ALOAD, 0);
                 mv.visitVarInsn(ALOAD, index + 2);
@@ -413,17 +417,19 @@ public final class Assembler {
             mv.visitMaxs(-1, -1);
             mv.visitEnd();
 
-            mv = cw.visitMethod(ACC_PUBLIC, "getConstructorId", "()I", null, null);
+            String constructorGetter = isStringConstructor ? "getStringConstructorId" : "getConstructorId";
+            mv = cw.visitMethod(ACC_PUBLIC, constructorGetter, format("()%s", constructorFieldDescriptor), null, null);
             mv.visitCode();
             mv.visitVarInsn(ALOAD, 0);
-            mv.visitFieldInsn(GETFIELD, className, "constructorId", "I");
-            mv.visitInsn(IRETURN);
+            mv.visitFieldInsn(GETFIELD, className, "constructorId", constructorFieldDescriptor);
+            mv.visitInsn(isStringConstructor ? ARETURN : IRETURN);
             mv.visitMaxs(-1, -1);
             mv.visitEnd();
 
-            mv = cw.visitMethod(ACC_PUBLIC, "getProperty", "(I)Ljava/lang/Object;", null, null);
-            mv.visitCode();
             if (constructorParameterCount > 0) {
+                mv = cw.visitMethod(ACC_PUBLIC, "getProperty", "(I)Ljava/lang/Object;", null, null);
+                mv.visitCode();
+
                 mv.visitVarInsn(ILOAD, 1);
                 IntStream propertyIndices = IntStream.range(0, constructorParameterCount);
                 Stream<Label> labels = Stream.fill(constructorParameterCount, Label::new);
@@ -431,8 +437,7 @@ public final class Assembler {
 
                 mv.visitLookupSwitchInsn(switchEnd, propertyIndices.toArray(), labels.toJavaArray(Label[]::new));
                 MethodVisitor caseMv = mv;
-                labels
-                    .zipWithIndex()
+                labels.zipWithIndex()
                     .forEach(labelAndIndex -> {
                         caseMv.visitLabel(labelAndIndex._1);
                         caseMv.visitVarInsn(ALOAD, 0);
@@ -440,11 +445,11 @@ public final class Assembler {
                         caseMv.visitInsn(ARETURN);
                     });
                 mv.visitLabel(switchEnd);
+                mv.visitInsn(ACONST_NULL);
+                mv.visitInsn(ARETURN);
+                mv.visitMaxs(-1, -1);
+                mv.visitEnd();
             }
-            mv.visitInsn(ACONST_NULL);
-            mv.visitInsn(ARETURN);
-            mv.visitMaxs(-1, -1);
-            mv.visitEnd();
 
             mv = cw.visitMethod(ACC_PUBLIC, "toString", "()Ljava/lang/String;", null, null);
             mv.visitCode();
@@ -455,9 +460,9 @@ public final class Assembler {
             mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append",
                 "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
             mv.visitVarInsn(ALOAD, 0);
-            mv.visitFieldInsn(GETFIELD, className, "constructorId", "I");
-            mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(I)Ljava/lang/StringBuilder;",
-                false);
+            mv.visitFieldInsn(GETFIELD, className, "constructorId", constructorFieldDescriptor);
+            mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append",
+                format("(%s)Ljava/lang/StringBuilder;", constructorFieldDescriptor), false);
 
             for (int index = 0; index < constructorParameterCount; index++) {
                 mv.visitLdcInsn(format(", property%d=", index));
@@ -525,7 +530,9 @@ public final class Assembler {
     }
 
     public void debug(String msg) {
-        System.out.println(msg);
+        if (shouldDebug) {
+            System.out.println(msg);
+        }
     }
 
     public void dload(int n) {
@@ -913,7 +920,7 @@ public final class Assembler {
     }
 
     public void lookupSwitch(String defaultLabel, List<String> caseLabels, List<Integer> cases) {
-        final int[] casesArr = cases.stream().mapToInt(n -> n).toArray();
+        int[] casesArr = cases.stream().mapToInt(n -> n).toArray();
         mv.visitLookupSwitchInsn(
             (Label) env.get(defaultLabel),
             casesArr,

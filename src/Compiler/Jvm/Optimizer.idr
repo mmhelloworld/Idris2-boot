@@ -362,6 +362,10 @@ sortConCases alts = sortBy (comparing getTag) alts where
     getTag : NamedConAlt -> Int
     getTag (MkNConAlt _ tag _ _) = fromMaybe 0 tag
 
+isTypeCase : NamedConAlt -> Bool
+isTypeCase (MkNConAlt _ Nothing _ _) = True
+isTypeCase _ = False
+
 mutual
     public export
     inferExpr : InferredType -> NamedCExp -> Asm InferredType
@@ -395,7 +399,14 @@ mutual
         idrisObjectVariable <- generateVariable "constructorSwitchValue"
         inferExpr idrisObjectType sc
         addVariableType idrisObjectVariable idrisObjectType
-        let sortedAlts = sortConCases alts
+        let hasTypeCase = any isTypeCase alts
+        when hasTypeCase $ do
+            constantExprVariable <- generateVariable "constructorCaseExpr"
+            addVariableType constantExprVariable inferredStringType
+            hashCodePositionVariable <- generateVariable "hashCodePosition"
+            addVariableType hashCodePositionVariable IInt
+            Pure ()
+        let sortedAlts = if hasTypeCase then alts else sortConCases alts
         altTypes <- traverse (inferExprConAlt exprTy) sortedAlts
         defTy <- maybe (Pure IUnknown) (inferExprWithNewScope exprTy) def
         let switchResultType = foldl (<+>) IUnknown (defTy :: altTypes)
@@ -516,7 +527,7 @@ mutual
             let (_, lineStart, lineEnd) = getSourceLocation value
             valueTy <- withInferenceScope lineStart lineEnd $ inferExpr IUnknown value
 
-            addVariableType varName valueTy
+            addVariableType varName (if isThunkType valueTy then inferredObjectType else valueTy)
 
             let (_, lineStart, lineEnd) = getSourceLocation expr
             retTy <- withInferenceScope lineStart lineEnd $ inferExpr exprTy expr
@@ -704,6 +715,12 @@ optimize tailCallCategory expr = do
     if hasNonSelfTailCall tailCallCategory then trampolineExpression inlinedAndTailRecursionMarkedExpr
     else Pure inlinedAndTailRecursionMarkedExpr
 
+resultVariablePrefix : String
+resultVariablePrefix = "$jvm$res"
+
+tailRecursionLoopVariablePrefix : String
+tailRecursionLoopVariablePrefix = "$jvm$rec$loop"
+
 inferDef : Name -> FC -> NamedDef -> Asm ()
 inferDef idrisName fc (MkNmFun args expr) = do
         let jname = jvmName idrisName
@@ -731,9 +748,9 @@ inferDef idrisName fc (MkNmFun args expr) = do
             (lineStart, lineEnd) ("", "") []
 
         updateScope scopeIndex functionScope
-        resultVariable <- if needResultVariable then generateVariable "jvm$fn$res" else Pure ""
+        resultVariable <- if needResultVariable then generateVariable resultVariablePrefix else Pure ""
         when hasSelfTailCall $ do
-            tailRecursionLoopVariable <- generateVariable "jvm$rec$loop"
+            tailRecursionLoopVariable <- generateVariable tailRecursionLoopVariablePrefix
             addVariableType tailRecursionLoopVariable IInt
             Pure ()
 

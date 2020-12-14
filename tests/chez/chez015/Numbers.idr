@@ -7,7 +7,7 @@ large : (a: Type) -> a
 large Integer = 3518437212345678901234567890123
 -- int close to 2ˆ63
 -- we expect some operations will overflow
-large Int = 3518437212345678901234567890
+large Int = 2147483647
 
 small : (a: Type) -> a
 small Integer = 437
