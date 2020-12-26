@@ -1,20 +1,17 @@
 package io.github.mmhelloworld.idris2boot.runtime;
 
 import java.nio.channels.Channels;
-import java.nio.file.FileSystems;
 import java.util.List;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.toList;
 
 public final class Runtime {
-    private static List<String> programArgs;
     private static final ChannelIo stdin = new ChannelIo(null, Channels.newChannel(System.in));
     private static final ChannelIo stdout = new ChannelIo(null, Channels.newChannel(System.out));
     private static final ChannelIo stderr = new ChannelIo(null, Channels.newChannel(System.err));
-    public static final boolean IS_POSIX = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
-
-    private static int errorNumber = 0;
+    private static final ThreadLocal<Integer> ERROR_NUMBER = ThreadLocal.withInitial(() -> 0);
+    private static List<String> programArgs;
 
     private Runtime() {
     }
@@ -46,11 +43,11 @@ public final class Runtime {
     }
 
     public static int getErrorNumber() {
-        return errorNumber;
+        return ERROR_NUMBER.get();
     }
 
-    public static void setErrorNumber(int errorNumber) {
-        Runtime.errorNumber = errorNumber;
+    static void setErrorNumber(int errorNumber) {
+        ERROR_NUMBER.set(errorNumber);
     }
 
     public static IntThunk createThunk(int value) {

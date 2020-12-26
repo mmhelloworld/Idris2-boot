@@ -2,6 +2,7 @@ module System.File
 
 import Data.List
 import Data.Strings
+import System.FFI
 
 public export
 data Mode = Read | WriteTruncate | Append | ReadWrite | ReadWriteTruncate | ReadAppend
@@ -16,18 +17,8 @@ support fn = "C:" ++ fn ++ ", libidris2_support"
 libc : String -> String
 libc fn = "C:" ++ fn ++ ", libc 6"
 
-jvmStatic : String -> String -> String -> String -> String
-jvmStatic className methodName arguments ret = "jvm:" ++ methodName ++ "(" ++
-    arguments ++ " " ++ ret ++ ")," ++ className
-        
-jvm : String -> String -> String
-jvm className methodName = "jvm:" ++ methodName ++ "," ++ className
-
 fileClass : String
 fileClass = "io/github/mmhelloworld/idris2boot/runtime/ChannelIo"
-
-runtimeClass : String
-runtimeClass = "io/github/mmhelloworld/idris2boot/runtime/Runtime"
 
 %foreign support "idris2_openFile"
          jvmStatic fileClass "open" "String String" fileClass
@@ -111,6 +102,7 @@ data FileError = GenericFileError Int -- errno
                | PermissionDenied
                | FileExists
 
+public export
 returnError : IO (Either FileError a)
 returnError
     = do err <- primIO prim_fileErrno

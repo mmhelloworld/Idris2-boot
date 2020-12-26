@@ -739,8 +739,12 @@ mutual
     inferExprOp (Cast IntegerType StringType) [x] = do
         inferExpr inferredBigIntegerType x
         pure inferredStringType
-    {-inferExprOp (Cast DoubleType StringType) [x] = op "number->string" [x]
-    inferExprOp (Cast CharType StringType) [x] = op "string" [x]-}
+    inferExprOp (Cast DoubleType StringType) [x] = do
+        inferExpr IDouble x
+        pure inferredStringType
+    inferExprOp (Cast CharType StringType) [x] = do
+        inferExpr IChar x
+        pure inferredStringType
 
     inferExprOp (Cast IntType IntegerType) [x] = do
         inferExpr IInt x

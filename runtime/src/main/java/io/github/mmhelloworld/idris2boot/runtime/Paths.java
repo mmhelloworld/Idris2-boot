@@ -3,12 +3,11 @@ package io.github.mmhelloworld.idris2boot.runtime;
 import java.nio.file.Path;
 
 public final class Paths {
-    private static String workingDir = System.getProperty("user.dir");
     private Paths() {
     }
 
     public static Path createPath(String pathStr) {
-        return createPath(pathStr, workingDir);
+        return createPath(pathStr, Directories.workingDir);
     }
 
     private static Path createPath(String pathStr, String workingDir) {

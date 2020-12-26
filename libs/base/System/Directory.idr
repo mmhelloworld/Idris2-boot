@@ -9,39 +9,40 @@ DirPtr = AnyPtr
 support : String -> String
 support fn = "C:" ++ fn ++ ", libidris2_support"
 
-%foreign support "idris2_fileErrno"
-prim_fileErrno : PrimIO Int
-
-returnError : IO (Either FileError a)
-returnError
-    = do err <- primIO prim_fileErrno
-         case err of
-              0 => pure $ Left FileReadError
-              1 => pure $ Left FileWriteError
-              2 => pure $ Left FileNotFound
-              3 => pure $ Left PermissionDenied
-              4 => pure $ Left FileExists
-              _ => pure $ Left (GenericFileError (err-5))
+directoriesClass : String
+directoriesClass = "io/github/mmhelloworld/idris2boot/runtime/Directories"
 
 ok : a -> IO (Either FileError a)
 ok x = pure (Right x)
 
-%foreign support "idris2_currentDirectory"
+%foreign
+    support "idris2_currentDirectory"
+    jvm directoriesClass "getWorkingDirectory"
 prim_currentDir : PrimIO (Ptr String)
 
-%foreign support "idris2_changeDir"
+%foreign
+    support "idris2_changeDir"
+    jvm directoriesClass "changeDirectory"
 prim_changeDir : String -> PrimIO Int
 
-%foreign support "idris2_createDir"
+%foreign
+    support "idris2_createDir"
+    jvm directoriesClass "createDirectory"
 prim_createDir : String -> PrimIO Int
 
-%foreign support "idris2_dirOpen"
+%foreign
+    support "idris2_dirOpen"
+    jvm directoriesClass "openDirectory"
 prim_openDir : String -> PrimIO DirPtr
 
-%foreign support "idris2_dirClose"
+%foreign
+    support "idris2_dirClose"
+    jvm directoriesClass "closeDirectory"
 prim_closeDir : DirPtr -> PrimIO ()
 
-%foreign support "idris2_nextDirEntry"
+%foreign
+    support "idris2_nextDirEntry"
+    jvm directoriesClass "getNextDirectoryEntry"
 prim_dirEntry : DirPtr -> PrimIO (Ptr String)
 
 export

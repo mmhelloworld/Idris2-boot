@@ -638,7 +638,8 @@ mutual
       where
         ret1 : Asm ()
         ret1 = do
-            InvokeMethod InvokeSpecial "java/math/BigInteger" "<init>" "(Ljava/lang/String;)V" False
+            InvokeMethod InvokeSpecial "java/math/BigDecimal" "<init>" "(Ljava/lang/String;)V" False
+            InvokeMethod InvokeVirtual "java/math/BigInteger" "toBigInteger" "()Ljava/math/BigInteger;" False
             asmCast inferredBigIntegerType returnType
             ret
 
@@ -659,7 +660,8 @@ mutual
     assembleExprOp ret returnType fc (Cast StringType IntType) [x] = assembleExpr ret1 inferredStringType x where
         ret1 : Asm ()
         ret1 = do
-            InvokeMethod InvokeStatic "java/lang/Integer" "parseInt" "(Ljava/lang/String;)I" False
+            InvokeMethod InvokeStatic "java/lang/Double" "parseDouble" "(Ljava/lang/String;)D" False
+            D2i
             asmCast IInt returnType
             ret
 
