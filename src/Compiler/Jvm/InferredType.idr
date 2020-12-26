@@ -128,6 +128,7 @@ parse "float" = IFloat
 parse "double" = IDouble
 parse "String" = inferredStringType
 parse "BigInteger" = inferredBigIntegerType
+parse "void" = IVoid
 parse className = IRef className
 
 createExtPrimTypeSpec : InferredType -> String

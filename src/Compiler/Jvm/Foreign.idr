@@ -114,7 +114,8 @@ parseForeignFunctionDescriptor fc (functionDescriptor :: className :: _) argumen
             argumentDeclarationTypes <- traverse (getForeignCallbackDeclarationType fc) argumentTypes
             Pure (className, fn, returnType, argumentDeclarationTypes)
         (fn, signature) => do
-            let descriptorsWithIdrisTypes = List.zip (Strings.split (== ' ') (strTail signature)) argumentTypes
+            let descriptorsWithIdrisTypes =
+                List.zip (Strings.split (== ' ') (strTail . fst $ break (== ')') signature)) argumentTypes
             (argumentTypesReversed, returnType) <- go [] descriptorsWithIdrisTypes
             Pure (className, fn, returnType, reverse argumentTypesReversed)
   where
@@ -125,11 +126,12 @@ parseForeignFunctionDescriptor fc (functionDescriptor :: className :: _) argumen
         go (foreignType :: acc) rest
 parseForeignFunctionDescriptor fc descriptors _ _ = Throw fc $ "Invalid foreign descriptor: " ++ show descriptors
 
-findJvmDescriptor : FC -> List String -> Asm (List String)
-findJvmDescriptor fc [] = Throw fc "Cannot compile foreign function to JVM as JVM foreign descriptor is missing"
-findJvmDescriptor fc (descriptor :: descriptors) = case parseCC descriptor of
+findJvmDescriptor : FC -> Name -> List String -> Asm (List String)
+findJvmDescriptor fc name [] =
+    Throw fc $ "Cannot compile foreign function " ++ show name ++ " to JVM as JVM foreign descriptor is missing"
+findJvmDescriptor fc name (descriptor :: descriptors) = case parseCC descriptor of
     Just ("jvm", descriptorParts) => Pure descriptorParts
-    _ => findJvmDescriptor fc descriptors
+    _ => findJvmDescriptor fc name descriptors
 
 getArgumentIndices : Nat -> List String -> SortedMap String Nat
 getArgumentIndices Z _ = SortedMap.empty
@@ -147,7 +149,7 @@ inferForeign idrisName fc foreignDescriptors argumentTypes returnType = do
     let fileName = file fc
     let jvmClassAndMethodName = getIdrisFunctionName (className jname) fileName (methodName jname)
     jvmArgumentTypes <- traverse (parse fc) argumentTypes
-    jvmDescriptor <- findJvmDescriptor fc foreignDescriptors
+    jvmDescriptor <- findJvmDescriptor fc idrisName foreignDescriptors
     jvmReturnType <- getInferredType fc !(parse fc returnType)
     (foreignFunctionClassName, foreignFunctionName, jvmReturnType, jvmArgumentTypes) <-
         parseForeignFunctionDescriptor fc jvmDescriptor jvmArgumentTypes jvmReturnType

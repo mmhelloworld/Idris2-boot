@@ -16,51 +16,83 @@ support fn = "C:" ++ fn ++ ", libidris2_support"
 libc : String -> String
 libc fn = "C:" ++ fn ++ ", libc 6"
 
+jvmStatic : String -> String -> String -> String -> String
+jvmStatic className methodName arguments ret = "jvm:" ++ methodName ++ "(" ++
+    arguments ++ " " ++ ret ++ ")," ++ className
+        
+jvm : String -> String -> String
+jvm className methodName = "jvm:" ++ methodName ++ "," ++ className
+
+fileClass : String
+fileClass = "io/github/mmhelloworld/idris2boot/runtime/ChannelIo"
+
+runtimeClass : String
+runtimeClass = "io/github/mmhelloworld/idris2boot/runtime/Runtime"
+
 %foreign support "idris2_openFile"
+         jvmStatic fileClass "open" "String String" fileClass
 prim__open : String -> String -> Int -> PrimIO FilePtr
 %foreign support "idris2_closeFile"
+         jvmStatic fileClass "close" fileClass "void"
 prim__close : FilePtr -> PrimIO ()
 
 %foreign support "idris2_fileError"
+         jvmStatic fileClass "getErrorNumber" fileClass "int"
 prim_error : FilePtr -> PrimIO Int
 %foreign support "idris2_fileErrno"
+         jvm runtimeClass "getErrorNumber"
 prim_fileErrno : PrimIO Int
 
 %foreign support "idris2_readLine"
+         jvmStatic fileClass "getLine" fileClass "String"
 prim__readLine : FilePtr -> PrimIO (Ptr String)
 %foreign support "idris2_readChars"
+         jvmStatic fileClass "getChars" ("int " ++ fileClass) "String"
 prim__readChars : Int -> FilePtr -> PrimIO (Ptr String)
 %foreign support "fgetc"
+         jvmStatic fileClass "getChar" fileClass "char"
 prim__readChar : FilePtr -> PrimIO Char
 %foreign support "idris2_writeLine"
+         jvmStatic fileClass "writeString" (fileClass ++ " String") "int"
 prim__writeLine : FilePtr -> String -> PrimIO Int
 %foreign support "idris2_eof"
+         jvmStatic fileClass "isEof" fileClass "int"
 prim__eof : FilePtr -> PrimIO Int
 %foreign "C:fflush,libc 6"
+         jvmStatic fileClass "flush" fileClass "int"
 prim__flush : FilePtr -> PrimIO Int
 
 %foreign support "idris2_fileRemove"
+         jvmStatic fileClass "delete" fileClass "int"
 prim__fileRemove : String -> PrimIO Int
 %foreign support "idris2_fileSize"
+         jvmStatic fileClass "size" fileClass "int"
 prim__fileSize : FilePtr -> PrimIO Int
 %foreign support "idris2_fileSize"
 prim__fPoll : FilePtr -> PrimIO Int
 
 %foreign support "idris2_fileAccessTime"
+         jvmStatic fileClass "getFileAccessTime" fileClass "int"
 prim__fileAccessTime : FilePtr -> PrimIO Int
 %foreign support "idris2_fileModifiedTime"
+         jvmStatic fileClass "getFileModifiedTime" fileClass "int"
 prim__fileModifiedTime : FilePtr -> PrimIO Int
 %foreign support "idris2_fileStatusTime"
+         jvmStatic fileClass "getFileStatusTime" fileClass "int"
 prim__fileStatusTime : FilePtr -> PrimIO Int
 
 %foreign support "idris2_stdin"
+         jvm runtimeClass "getStdin"
 prim__stdin : FilePtr
 %foreign support "idris2_stdout"
+         jvm runtimeClass "getStdout"
 prim__stdout : FilePtr
 %foreign support "idris2_stderr"
+         jvm runtimeClass "getStderr"
 prim__stderr : FilePtr
 
 %foreign libc "chmod"
+         jvmStatic fileClass "chmod" "String int" "int"
 prim__chmod : String -> Int -> PrimIO Int
 
 modeStr : Mode -> String

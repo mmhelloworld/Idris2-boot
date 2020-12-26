@@ -86,6 +86,7 @@ cCall : (ret : Type) -> String -> FArgList -> IO ret
 cCall ret fn args = primIO (prim__cCall ret fn args)
 
 %foreign "C:idris2_isNull, libidris2_support"
+         "jvm:isNull,io/github/mmhelloworld/idris2boot/runtime/Objects"
 export
 prim__nullAnyPtr : AnyPtr -> Int
 
@@ -97,13 +98,15 @@ prim__nullPtr : Ptr t -> Int -- can't pass 'type' to a foreign function
 prim__nullPtr p = prim__nullAnyPtr (prim__forgetPtr p)
 
 %foreign "C:idris2_getString, libidris2_support"
+         "jvm:getString,io/github/mmhelloworld/idris2boot/runtime/Objects"
 export
 prim__getString : Ptr String -> String
 
 %foreign "C:idris2_getStr,libidris2_support"
+         "jvm:getString,io/github/mmhelloworld/idris2boot/runtime/Console"
 prim__getStr : PrimIO String
 %foreign "C:idris2_putStr,libidris2_support"
-    "jvm:printString,io/github/mmhelloworld/idris2boot/runtime/Runtime"
+         "jvm:printString,io/github/mmhelloworld/idris2boot/runtime/Console"
 prim__putStr : String -> PrimIO ()
 
 ||| Output a string to stdout without a trailing newline.

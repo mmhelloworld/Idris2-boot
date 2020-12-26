@@ -15,15 +15,18 @@ partial
 foldl1 : (a -> a -> a) -> List a -> a
 foldl1 f (x::xs) = foldl f x xs
 
+%foreign
+  "scheme:string-concat"
+  "javascript:lambda:(xs)=>''.concat(...__prim_idris2js_array(xs))"
+  "jvm:fromIdrisList,io/github/mmhelloworld/idris2boot/runtime/Strings"
+export
+fastConcat : List String -> String
+
 -- This works quickly because when string-append builds the result, it allocates
 -- enough room in advance so there's only one allocation, rather than lots!
 export
 fastAppend : List String -> String
-fastAppend xs = unsafePerformIO (schemeCall String "string-append" (toFArgs xs))
-  where
-    toFArgs : List String -> FArgList
-    toFArgs [] = []
-    toFArgs (x :: xs) = x :: toFArgs xs
+fastAppend = fastConcat
 
 ||| Splits a character list into a list of whitespace separated character lists.
 |||
