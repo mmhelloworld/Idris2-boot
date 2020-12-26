@@ -1,10 +1,9 @@
 package io.github.mmhelloworld.idris2boot.runtime;
 
-import io.vavr.collection.Stream;
-
 import java.util.List;
+import java.util.stream.Stream;
 
-import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.toList;
 
 public final class Runtime {
     private static List<String> programArgs;
@@ -18,9 +17,8 @@ public final class Runtime {
 
     public static void setProgramArgs(String[] args) {
         // "java" as the executable name for the first argument to conform to Idris' getArgs function
-        programArgs = Stream.of("java")
-            .appendAll(asList(args))
-            .asJava();
+        programArgs = Stream.concat(Stream.of("java"), Stream.of(args))
+            .collect(toList());
     }
 
     public static void printString(String str) {
@@ -57,6 +55,10 @@ public final class Runtime {
         } else {
             return possibleThunk;
         }
+    }
+
+    public static Object force(Object delayed) {
+        return unwrap(((Delayed) unwrap(delayed)).evaluate());
     }
 
     public static int unwrapIntThunk(Object possibleThunk) {

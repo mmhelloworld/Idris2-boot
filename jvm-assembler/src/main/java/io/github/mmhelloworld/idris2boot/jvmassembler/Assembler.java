@@ -357,7 +357,8 @@ public final class Assembler {
                              List<List<Annotation>> paramAnnotations) {
         if (mv != null) {
             classMethodVisitorStack.addFirst(new ClassMethodVisitor(this.className, this.methodName, cw, mv,
-                new HashMap<>(env)));
+                env));
+            env = new HashMap<>();
         }
         this.className = className;
         this.methodName = methodName;
@@ -368,7 +369,7 @@ public final class Assembler {
             createDefaultConstructor(classWriter);
             return classWriter;
         });
-        final String[] exceptionsArr = exceptions == null ? null : exceptions.toArray(new String[0]);
+        String[] exceptionsArr = exceptions == null ? null : exceptions.toArray(new String[0]);
         mv = cw.visitMethod(
             acc,
             methodName,
@@ -1026,12 +1027,6 @@ public final class Assembler {
         this.shouldDescribeFrame = shouldDescribeFrame;
     }
 
-    public void updateIfIndex(int ifIndex) {
-    }
-
-    public void updateSwitchIndex(int switchIndex) {
-    }
-
     public void lineNumber(int lineNumber, String label) {
         mv.visitLineNumber(lineNumber, (Label) env.get(label));
     }
@@ -1039,16 +1034,16 @@ public final class Assembler {
     public void localVariable(String name, String typeDescriptor, String signature, String lineNumberStartLabel,
                               String lineNumberEndLabel, int index) {
         Label start = (Label) env.get(lineNumberStartLabel);
-        requireNonNull(start, format("%s must not be null", lineNumberStartLabel));
+        requireNonNull(start, format("Line number start label '%s' for variable %s at index %d must not be null",
+            lineNumberStartLabel, name, index));
         Label end = (Label) env.get(lineNumberEndLabel);
-        requireNonNull(start, format("%s must not be null", lineNumberEndLabel));
-        mv.visitLocalVariable(name, typeDescriptor, signature, start,
-            end, index);
+        requireNonNull(end, format("Line number end label '%s' for variable %s at index %d must not be null",
+            lineNumberEndLabel, name, index));
+        mv.visitLocalVariable(name, typeDescriptor, signature, start, end, index);
     }
 
-    private MethodVisitor createDefaultConstructor(final ClassWriter cw) {
-        final MethodVisitor mv;
-        mv = cw.visitMethod(ACC_PRIVATE, "<init>", "()V", null, null);
+    private MethodVisitor createDefaultConstructor(ClassWriter cw) {
+        MethodVisitor mv = cw.visitMethod(ACC_PRIVATE, "<init>", "()V", null, null);
         mv.visitCode();
         mv.visitVarInsn(ALOAD, 0);
         mv.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
@@ -1058,7 +1053,7 @@ public final class Assembler {
         return mv;
     }
 
-    private void handleCreateMethod(final MethodVisitor mv, List<Annotation> annotations,
+    private void handleCreateMethod(MethodVisitor mv, List<Annotation> annotations,
                                     List<List<Annotation>> parametersAnnotations) {
         annotations.forEach(annotation -> {
             final AnnotationVisitor av = mv.visitAnnotation(annotation.getName(), true);

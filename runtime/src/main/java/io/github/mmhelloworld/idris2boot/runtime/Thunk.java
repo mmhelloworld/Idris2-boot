@@ -1,5 +1,7 @@
 package io.github.mmhelloworld.idris2boot.runtime;
 
+import static java.util.Objects.requireNonNull;
+
 @FunctionalInterface
 public interface Thunk {
     Thunk evaluate();
@@ -9,23 +11,29 @@ public interface Thunk {
     }
 
     default Object getObject() {
-        Thunk resultThunk = unwrap();
-        return resultThunk == null ? null : resultThunk.getObject();
-    }
-
-    default int getInt() {
-        return unwrap().getInt();
-    }
-
-    default double getDouble() {
-        return unwrap().getDouble();
-    }
-
-    default Thunk unwrap() {
         Thunk thunk = this;
         while (thunk != null && thunk.isRedex()) {
             thunk = thunk.evaluate();
         }
-        return thunk;
+        return thunk == null ? null : thunk.getObject();
     }
+
+    default int getInt() {
+        Thunk thunk = this;
+        while (thunk != null && thunk.isRedex()) {
+            thunk = thunk.evaluate();
+        }
+        requireNonNull(thunk, "No int value at thunk");
+        return thunk.getInt();
+    }
+
+    default double getDouble() {
+        Thunk thunk = this;
+        while (thunk != null && thunk.isRedex()) {
+            thunk = thunk.evaluate();
+        }
+        requireNonNull(thunk, "No double value at thunk");
+        return thunk.getDouble();
+    }
+
 }

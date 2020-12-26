@@ -153,7 +153,7 @@ inferForeign idrisName fc foreignDescriptors argumentTypes returnType = do
         parseForeignFunctionDescriptor fc jvmDescriptor jvmArgumentTypes jvmReturnType
     let jvmArgumentTypes = getInferredType <$> jvmArgumentTypes
     let inferredFunctionType = MkInferredFunctionType jvmReturnType jvmArgumentTypes
-    scopeIndex <- freshScopeIndex
+    scopeIndex <- newScopeIndex
     let arity = length jvmArgumentTypes
     let argumentNames =
        if arity > 0 then (\argumentIndex => "arg" ++ show argumentIndex) <$> [0 .. Nat.pred arity] else []
@@ -167,7 +167,6 @@ inferForeign idrisName fc foreignDescriptors argumentTypes returnType = do
             NmPrimVal fc (Str $ foreignFunctionClassName ++ "." ++ foreignFunctionName),
             getJvmExtPrimArguments $ List.zip argumentTypes $ SortedMap.toList argumentTypesByName,
             NmPrimVal fc WorldVal])
-        False
     setCurrentFunction function
     updateState $ record { functions $= SortedMap.insert jname function }
     let functionScope = MkScope scopeIndex Nothing argumentTypesByName argIndices jvmReturnType arity

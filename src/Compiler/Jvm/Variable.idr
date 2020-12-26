@@ -215,6 +215,7 @@ asmCast IUnknown ty@(IRef clazz) = do
 asmCast (IRef _) IUnknown = Pure ()
 asmCast IUnknown IUnknown = Pure ()
 asmCast IVoid IVoid = Pure ()
+asmCast IVoid (IRef _) = Aconstnull
 asmCast ty1 ty2 = Throw emptyFC $ "Cannot convert from " ++ show ty1 ++ " to " ++ show ty2
 
 loadAndBox : (Nat -> Asm ()) -> Asm () -> SortedMap Nat InferredType -> Nat -> Asm ()

@@ -26,9 +26,9 @@ mutual
     showNamedCExp : Nat -> NamedCExp -> String
     showNamedCExp n (NmLocal fc x) = show x
     showNamedCExp n (NmRef fc x) = show x
-    showNamedCExp n (NmLam fc x y) = "\n" ++ indent n ("\\" ++ show x ++ " -> \n" ++ showNamedCExp (n + 1) y)
+    showNamedCExp n (NmLam fc x y) = "\n" ++ indent n ("\\" ++ show x ++ " -> \n" ++ indent n (showNamedCExp (n + 1) y))
     showNamedCExp n (NmLet fc x y z) = "\n" ++ indent n ("let " ++ show x ++ " = \n") ++
-        showNamedCExp (n + 1) y ++ "\n" ++ indent n "in\n" ++ showNamedCExp (n + 1) z
+        showNamedCExp (n + 1) y ++ "\n" ++ indent n "in\n" ++ indent n (showNamedCExp (n + 1) z)
     showNamedCExp n (NmApp fc x xs) = showNamedCExp n x ++ "(" ++
         (showSep ", " $ showNamedCExp n <$> xs) ++ ")"
     showNamedCExp n (NmCon fc x tag xs) = "new " ++ show x ++ "(" ++ show tag ++

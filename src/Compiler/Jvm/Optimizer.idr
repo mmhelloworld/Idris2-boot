@@ -44,21 +44,8 @@ mutual
     hasTailCallConstAlt predicate ((MkNConstAlt _ expr) :: alts) =
         hasTailCall predicate expr || hasTailCallConstAlt predicate alts
 
-hasBranch : NamedCExp -> Bool
-hasBranch (NmLet _ var value sc) = hasBranch value || hasBranch sc
-hasBranch (NmApp _ f args) = hasBranch f || anyTrue (map hasBranch args)
-hasBranch (NmCon _ _ _ args) = anyTrue (map hasBranch args)
-hasBranch (NmOp _ (LT _) _) = True
-hasBranch (NmOp _ (LTE _) _) = True
-hasBranch (NmOp _ (EQ _) _) = True
-hasBranch (NmOp _ (GTE _) _) = True
-hasBranch (NmOp _ (GT _) _) = True
-hasBranch (NmOp _ _ args) = anyTrue (toList (map hasBranch args))
-hasBranch (NmExtPrim _ _ args) = anyTrue (map hasBranch args)
-hasBranch (NmForce _ t) = hasBranch t
-hasBranch (NmConCase _ sc alts def) = True
-hasBranch (NmConstCase _ sc alts def) = True
-hasBranch _ = False
+thunkExpr : NamedCExp -> NamedCExp
+thunkExpr expr = NmLam (getFC expr) (UN "$jvm$thunk") expr
 
 tySpec : NamedCExp -> Asm InferredType
 tySpec (NmCon fc (UN "Int") _ []) = pure IInt
@@ -122,6 +109,42 @@ mutual
     usedConst n (MkNConstAlt _ sc) = used n sc
 
 mutual
+    liftToLambda : (isTailPosition: Bool) -> NamedCExp -> NamedCExp
+    liftToLambda False (NmLet fc var value sc) = NmApp fc (NmLam fc var sc) [value]
+    liftToLambda True (NmLet fc var value sc) = NmLet fc var (liftToLambda False value) (liftToLambda True sc)
+    liftToLambda _ expr@(NmConCase _ sc [] Nothing) = expr
+    liftToLambda False (NmConCase fc sc alts def) =
+        let var = UN "$jvm$arg"
+            liftedAlts = liftToLambdaCon <$> alts
+            liftedDef = liftToLambda True <$> def
+        in NmApp fc (NmLam fc var (NmConCase fc (NmLocal fc var) liftedAlts liftedDef)) [liftToLambda False sc]
+
+    liftToLambda True (NmConCase fc sc alts def) =
+        NmConCase fc (liftToLambda False sc) (liftToLambdaCon <$> alts) (liftToLambda True <$> def)
+    liftToLambda _ expr@(NmConstCase fc sc [] Nothing) = expr
+    liftToLambda False (NmConstCase fc sc alts def) =
+        let var = UN "$jvm$arg"
+            liftedAlts = liftToLambdaConst <$> alts
+            liftedDef = liftToLambda True <$> def
+        in NmApp fc (NmLam fc var $ NmConstCase fc (NmLocal fc var) liftedAlts liftedDef) [liftToLambda False sc]
+    liftToLambda True (NmConstCase fc sc alts def) =
+        NmConstCase fc (liftToLambda False sc) (liftToLambdaConst <$> alts) (liftToLambda True <$> def)
+    liftToLambda _ (NmLam fc param sc) = NmLam fc param $ liftToLambda True sc
+    liftToLambda _ (NmApp fc f args) = NmApp fc (liftToLambda False f) (liftToLambda False <$> args)
+    liftToLambda _ expr@(NmCon fc name tag args) = NmCon fc name tag $ (liftToLambda False <$> args)
+    liftToLambda _ (NmOp fc f args) = NmOp fc f (liftToLambda False <$> args)
+    liftToLambda _ (NmExtPrim fc f args) = NmExtPrim fc f (liftToLambda False <$> args)
+    liftToLambda _ (NmForce fc t) = NmForce fc $ liftToLambda False t
+    liftToLambda _ (NmDelay fc t) = NmDelay fc $ liftToLambda False t
+    liftToLambda _ expr = expr
+
+    liftToLambdaCon : NamedConAlt -> NamedConAlt
+    liftToLambdaCon (MkNConAlt n tag args body) = MkNConAlt n tag args $ liftToLambda True body
+
+    liftToLambdaConst : NamedConstAlt -> NamedConstAlt
+    liftToLambdaConst (MkNConstAlt constant body) = MkNConstAlt constant (liftToLambda True body)
+
+mutual
     doGetUsageCount : Nat -> Name -> NamedCExp -> Nat
     doGetUsageCount count name (NmLocal fc var) = if name == var then count + 1 else count
     doGetUsageCount count name (NmRef _ _) = count
@@ -129,7 +152,10 @@ mutual
     doGetUsageCount count name (NmLet _ var value sc) =
         let usageCountInValue = doGetUsageCount count name value
         in doGetUsageCount usageCountInValue name sc
-    doGetUsageCount count name (NmApp _ f args) = foldl (\acc, arg => doGetUsageCount acc name arg) count args
+    doGetUsageCount count name (NmApp _ (NmRef _ _) args) = foldl (\acc, arg => doGetUsageCount acc name arg) count args
+    doGetUsageCount count name (NmApp _ f args) =
+        let lambdaExprUsageCount = doGetUsageCount count name f
+        in foldl (\acc, arg => doGetUsageCount acc name arg) lambdaExprUsageCount args
     doGetUsageCount count name (NmCon _ _ _ args) = foldl (\acc, arg => doGetUsageCount acc name arg) count args
     doGetUsageCount count name (NmOp _ _ args) = foldl (\acc, arg => doGetUsageCount acc name arg) count args
     doGetUsageCount count name (NmExtPrim _ _ args) = foldl (\acc, arg => doGetUsageCount acc name arg) count args
@@ -184,7 +210,7 @@ mutual
     trampolineExpression expr@(NmApp fc (NmRef nameFc (UN ":__jvmTailRec__:")) args) =
         -- Do not trampoline as tail recursion will be eliminated
         Pure expr
-    trampolineExpression expr@(NmApp fc (NmRef nameFc idrisName) args) = Pure $ NmDelay fc expr
+    trampolineExpression expr@(NmApp fc (NmRef nameFc idrisName) args) = Pure $ thunkExpr expr
     trampolineExpression expr@(NmLet fc var value body) =
         NmLet fc var value <$> trampolineExpression body
     trampolineExpression expr@(NmConCase fc sc alts def) = do
@@ -212,8 +238,10 @@ mutual
     inlineVariable var value (NmLam fc param sc) = NmLam fc param $ inlineVariable var value sc
     inlineVariable var value (NmLet fc letVar letValue letBody) =
         NmLet fc letVar (inlineVariable var value letValue) (inlineVariable var value letBody)
-    inlineVariable var value (NmApp fc f args) =
+    inlineVariable var value (NmApp fc f@(NmRef _ _) args) =
         NmApp fc f (inlineVariable var value <$> args)
+    inlineVariable var value (NmApp fc f args) =
+        NmApp fc (inlineVariable var value f) (inlineVariable var value <$> args)
     inlineVariable var value (NmCon fc name tag args) =
         NmCon fc name tag $ (inlineVariable var value <$> args)
     inlineVariable var value (NmOp fc op args) = NmOp fc op (inlineVariable var value <$> args)
@@ -270,7 +298,7 @@ exitInferenceScope targetScope = updateCurrentScopeIndex (index targetScope)
 enterInferenceScope : Int -> Int -> Asm ()
 enterInferenceScope lineNumberStart lineNumberEnd = do
     parentScopeIndex <- getCurrentScopeIndex
-    scopeIndex <- freshScopeIndex
+    scopeIndex <- newScopeIndex
     parentScope <- getScope parentScopeIndex
     let newScope = MkScope scopeIndex (Just parentScopeIndex) SortedMap.empty SortedMap.empty IUnknown
         (nextVariableIndex parentScope) (lineNumberStart, lineNumberEnd) ("", "") []
@@ -289,15 +317,15 @@ createLambdaClosureScope scopeIndex childScopeIndex closureVariables parentScope
         getLambdaClosureVariableIndices acc index (var :: vars) = 
             getLambdaClosureVariableIndices ((var, index) :: acc) (index + 1) vars
 
-enterInferenceLambdaScope : Int -> Int -> List String -> NamedCExp -> Asm ()
-enterInferenceLambdaScope lineNumberStart lineNumberEnd lambdaParameters expr = do
+enterInferenceLambdaScope : Int -> Int -> NamedCExp -> Asm ()
+enterInferenceLambdaScope lineNumberStart lineNumberEnd expr = do
         parentScopeIndex <- getCurrentScopeIndex
-        scopeIndex <- freshScopeIndex
+        scopeIndex <- newScopeIndex
         parentScope <- getScope parentScopeIndex
         let usedVariables = filter (flip used expr) !(getVariables parentScopeIndex)
         newScope <- case usedVariables  of
             nonEmptyUsedVariables@(_ :: _) => do
-                lambdaParentScopeIndex <- freshScopeIndex
+                lambdaParentScopeIndex <- newScopeIndex
                 closureScope <- createLambdaClosureScope lambdaParentScopeIndex scopeIndex nonEmptyUsedVariables
                     parentScope
                 updateScope lambdaParentScopeIndex closureScope
@@ -308,8 +336,6 @@ enterInferenceLambdaScope lineNumberStart lineNumberEnd lambdaParameters expr = 
                 IUnknown 0 (lineNumberStart, lineNumberEnd) ("", "") []
         updateScope scopeIndex newScope
         updateCurrentScopeIndex scopeIndex
-        traverse_ createVariable lambdaParameters
-        traverse_ (flip addVariableType inferredObjectType) lambdaParameters
 
 withInferenceScope : Int -> Int -> Asm result -> Asm result
 withInferenceScope lineNumberStart lineNumberEnd op = do
@@ -319,17 +345,38 @@ withInferenceScope lineNumberStart lineNumberEnd op = do
     exitInferenceScope scope
     Pure result
 
-withInferenceLambdaScope : Int -> Int -> List String -> NamedCExp -> Asm result -> Asm result
-withInferenceLambdaScope lineNumberStart lineNumberEnd lambdaParameters expr op = do
+withInferenceLambdaScope : Int -> Int -> NamedCExp -> Asm result -> Asm result
+withInferenceLambdaScope lineNumberStart lineNumberEnd expr op = do
     scope <- getScope !getCurrentScopeIndex
-    enterInferenceLambdaScope lineNumberStart lineNumberEnd lambdaParameters expr
+    enterInferenceLambdaScope lineNumberStart lineNumberEnd expr
     result <- op
     exitInferenceScope scope
     Pure result
 
-getLambdaInterfaceType : (param : Maybe Name) -> InferredType -> InferredType
-getLambdaInterfaceType Nothing returnType = getThunkType returnType
-getLambdaInterfaceType _ returnType = inferredLambdaType
+data LambdaType = ThunkLambda | DelayedLambda | FunctionLambda
+
+getLambdaType : (parameterName: Maybe Name) -> LambdaType
+getLambdaType (Just (UN "$jvm$thunk")) = ThunkLambda
+getLambdaType Nothing = DelayedLambda
+getLambdaType _ = FunctionLambda
+
+getLambdaInterfaceMethodName : LambdaType -> String
+getLambdaInterfaceMethodName FunctionLambda = "apply"
+getLambdaInterfaceMethodName _ = "evaluate"
+
+getSamDesc : LambdaType -> String
+getSamDesc ThunkLambda = "()" ++ getJvmTypeDescriptor thunkType
+getSamDesc DelayedLambda = "()Ljava/lang/Object;"
+getSamDesc FunctionLambda = "(Ljava/lang/Object;)Ljava/lang/Object;"
+
+getLambdaInterfaceType : LambdaType -> InferredType -> InferredType
+getLambdaInterfaceType ThunkLambda returnType = getThunkType returnType
+getLambdaInterfaceType DelayedLambda returnType = delayedType
+getLambdaInterfaceType FunctionLambda returnType = inferredLambdaType
+
+getLambdaImplementationMethodReturnType : LambdaType -> InferredType
+getLambdaImplementationMethodReturnType ThunkLambda = thunkType
+getLambdaImplementationMethodReturnType _ = inferredObjectType
 
 getConstantType : List NamedConstAlt -> Asm InferredType
 getConstantType [] = Throw emptyFC "Unknown constant switch type"
@@ -369,20 +416,20 @@ isTypeCase _ = False
 mutual
     public export
     inferExpr : InferredType -> NamedCExp -> Asm InferredType
-    inferExpr exprTy (NmDelay _ expr) = inferExprLam Nothing expr
+    inferExpr exprTy (NmDelay _ expr) = inferExprLam Nothing Nothing expr
     inferExpr exprTy expr@(NmLocal _ var) = addVariableType (jvmSimpleName var) exprTy
     inferExpr exprTy (NmRef _ _) = pure exprTy
-    inferExpr _ (NmLam _ var body) = inferExprLam (Just var) body
+    inferExpr _ (NmApp _ (NmLam _ var body) [expr]) = do
+        inferExpr IUnknown expr
+        inferExprLam (Just expr) (Just var) body
+    inferExpr _ (NmLam _ var body) = inferExprLam Nothing (Just var) body
     inferExpr exprTy (NmLet fc var value expr) = inferExprLet fc exprTy var value expr
-    inferExpr exprTy app@(NmApp _ (NmRef _ _) _) = inferExprApp exprTy app
-    inferExpr exprTy app@(NmApp _ var _) = do
-        inferExpr inferredLambdaType var
-        inferExprApp exprTy app
+    inferExpr exprTy app@(NmApp _ _ _) = inferExprApp exprTy app
     inferExpr exprTy expr@(NmCon fc name tag args) =
         inferExprCon exprTy (fst $ getSourceLocation expr) name args
     inferExpr exprTy (NmOp _ fn args) = inferExprOp fn args
     inferExpr exprTy (NmExtPrim _ fn args) = inferExtPrim exprTy (toPrim fn) args
-    inferExpr exprTy (NmForce _ expr) = inferExpr thunkType expr
+    inferExpr exprTy (NmForce _ expr) = inferExpr delayedType expr
 
     inferExpr exprTy (NmConCase _ sc [] Nothing) = Pure IUnknown
     inferExpr exprTy (NmConCase _ sc [] (Just def)) = do
@@ -409,8 +456,7 @@ mutual
         let sortedAlts = if hasTypeCase then alts else sortConCases alts
         altTypes <- traverse (inferExprConAlt exprTy) sortedAlts
         defTy <- maybe (Pure IUnknown) (inferExprWithNewScope exprTy) def
-        let switchResultType = foldl (<+>) IUnknown (defTy :: altTypes)
-        Pure switchResultType
+        Pure $ foldl (<+>) IUnknown (defTy :: altTypes)
 
     inferExpr exprTy (NmConstCase fc sc [] Nothing) = Pure IUnknown
     inferExpr exprTy (NmConstCase fc sc [] (Just expr)) = inferExpr exprTy expr
@@ -484,8 +530,6 @@ mutual
 
     inferBoolOp : InferredType -> NamedCExp -> NamedCExp -> Asm InferredType
     inferBoolOp ty x y = do
-        boolOpResultVariable <- generateVariable "jvm$boolOpResult"
-        addVariableType boolOpResultVariable IBool
         inferExpr ty x
         inferExpr ty y
         pure IBool
@@ -505,34 +549,66 @@ mutual
            let (cname, mnameWithDot) = break (== '.') fn
            let (_, mname) = break (/= '.') mnameWithDot
            pure methodReturnType
+    inferExtPrim returnType NewArray [_, size, val, world] = do
+        inferExpr IInt size
+        inferExpr IUnknown val
+        pure arrayListType
+    inferExtPrim returnType ArrayGet [_, arr, pos, world] = do
+        inferExpr arrayListType arr
+        inferExpr IInt pos
+        pure IUnknown
+    inferExtPrim returnType ArraySet [_, arr, pos, val, world] = do
+        inferExpr arrayListType arr
+        inferExpr IInt pos
+        inferExpr IUnknown val
+        pure inferredObjectType
     inferExtPrim _ prim args = Throw emptyFC ("Unsupported external function " ++ show prim)
 
-    inferExprLam : (param : Maybe Name) -> NamedCExp -> Asm InferredType
-    inferExprLam param expr = do
+    inferExprLamWithParameterType : Maybe (Name, InferredType) -> NamedCExp -> Asm InferredType
+    inferExprLamWithParameterType parameterNameAndType expr = do
         let (_, lineStart, lineEnd) = getSourceLocation expr
-        let parameterNames = jvmSimpleName <$> toList param
-        lambdaBodyReturnType <- withInferenceLambdaScope lineStart lineEnd parameterNames expr $ do
+        let jvmParameterNameAndType = (\(name, ty) => (jvmSimpleName name, ty)) <$> parameterNameAndType
+        lambdaBodyReturnType <- withInferenceLambdaScope lineStart lineEnd expr $ do
+            traverse createAndAddVariable jvmParameterNameAndType
             lambdaBodyReturnType <- inferExpr IUnknown expr
             currentScope <- getScope !getCurrentScopeIndex
             updateScope (index currentScope) $ record {returnType = lambdaBodyReturnType} currentScope
             Pure lambdaBodyReturnType
-        Pure $ getLambdaInterfaceType param lambdaBodyReturnType
+        Pure $ getLambdaInterfaceType (getLambdaType (fst <$> parameterNameAndType)) lambdaBodyReturnType
+      where
+        createAndAddVariable : (String, InferredType) -> Asm ()
+        createAndAddVariable (name, ty) = do
+            createVariable name
+            addVariableType name ty
+            Pure ()
+
+    inferExprLam : (parameterValue: Maybe NamedCExp) -> (parameterName : Maybe Name) -> NamedCExp -> Asm InferredType
+    inferExprLam parameterValue@(Just value) (Just name) (NmConstCase fc var alts def) = do
+        constantType <- getConstantType alts
+        dynamicVariableIndex <- newDynamicVariableIndex
+        let generatedVariableName = jvmSimpleName name ++ show dynamicVariableIndex
+        inferExpr constantType value
+        inferExprLamWithParameterType (Just (UN generatedVariableName, constantType)) $
+            NmConstCase fc (NmLocal fc (UN generatedVariableName)) alts def
+    inferExprLam parameterValue@(Just value) (Just name) (NmConCase fc var alts def) = do
+        dynamicVariableIndex <- newDynamicVariableIndex
+        let generatedVariableName = jvmSimpleName name ++ show dynamicVariableIndex
+        inferExpr idrisObjectType value
+        inferExprLamWithParameterType (Just (UN generatedVariableName, idrisObjectType)) $
+            NmConCase fc (NmLocal fc (UN generatedVariableName)) alts def
+    inferExprLam _ parameterName expr =
+        inferExprLamWithParameterType ((\name => (name, inferredObjectType)) <$> parameterName) expr
 
     inferExprLet : FC -> InferredType -> (x : Name) -> NamedCExp -> NamedCExp -> Asm InferredType
     inferExprLet fc exprTy var value expr = do
         let (lineStart, lineEnd) = getLineNumbers (startPos fc) (endPos fc)
-        withInferenceScope lineStart lineEnd $ do
-            let varName = jvmSimpleName var
-            createVariable varName
-            let (_, lineStart, lineEnd) = getSourceLocation value
-            valueTy <- withInferenceScope lineStart lineEnd $ inferExpr IUnknown value
-
-            addVariableType varName (if isThunkType valueTy then inferredObjectType else valueTy)
-
-            let (_, lineStart, lineEnd) = getSourceLocation expr
-            retTy <- withInferenceScope lineStart lineEnd $ inferExpr exprTy expr
-
-            pure retTy
+        let varName = jvmSimpleName var
+        createVariable varName
+        let (_, lineStart, lineEnd) = getSourceLocation value
+        valueTy <- withInferenceScope lineStart lineEnd $ inferExpr IUnknown value
+        addVariableType varName (if isThunkType valueTy then inferredObjectType else valueTy)
+        let (_, lineStart, lineEnd) = getSourceLocation expr
+        withInferenceScope lineStart lineEnd $ inferExpr exprTy expr
 
     inferSelfTailCallParameter : SortedMap Nat InferredType -> (NamedCExp, Nat) -> Asm InferredType
     inferSelfTailCallParameter types (arg, index) = do
@@ -555,6 +631,7 @@ mutual
         traverse_ inferParameter argsWithTypes
         Pure $ returnType functionType
     inferExprApp exprTy (NmApp _ lambdaVariable args) = do
+        inferExpr inferredLambdaType lambdaVariable
         let argsWithTypes = List.zip args (replicate (length args) IUnknown)
         traverse_ inferParameter argsWithTypes
         pure IUnknown
@@ -711,7 +788,7 @@ mutual
 
 optimize : TailCallCategory -> NamedCExp -> Asm NamedCExp
 optimize tailCallCategory expr = do
-    inlinedAndTailRecursionMarkedExpr <- markTailRecursion (eliminateSingleUsageVariable expr)
+    inlinedAndTailRecursionMarkedExpr <- markTailRecursion . liftToLambda True $ eliminateSingleUsageVariable expr
     if hasNonSelfTailCall tailCallCategory then trampolineExpression inlinedAndTailRecursionMarkedExpr
     else Pure inlinedAndTailRecursionMarkedExpr
 
@@ -724,40 +801,33 @@ tailRecursionLoopVariablePrefix = "$jvm$rec$loop"
 inferDef : Name -> FC -> NamedDef -> Asm ()
 inferDef idrisName fc (MkNmFun args expr) = do
         let jname = jvmName idrisName
+        Debug $ "************* Inferring " ++ show jname ++ ", " ++ show idrisName ++ "(" ++ show args ++ ")" ++ "*******"
+        Debug $ showNamedCExp 0 expr
         let hasSelfTailCall = hasTailCall (== idrisName) expr
         let hasNonSelfTailCall = hasTailCall (/= idrisName) expr
         let fileName = fst $ getSourceLocationFromFc fc
         let jvmClassAndMethodName = getIdrisFunctionName (className jname) fileName (methodName jname)
         let tailCallCategory = MkTailCallCategory hasSelfTailCall hasNonSelfTailCall
         let function = MkFunction jname (MkInferredFunctionType IUnknown []) SortedMap.empty 0 jvmClassAndMethodName
-            tailCallCategory (NmCrash emptyFC "uninitialized function") False
+            tailCallCategory (NmCrash emptyFC "uninitialized function")
         setCurrentFunction function
         updateState $ record { functions $= SortedMap.insert jname function }
         optimizedExpr <- optimize tailCallCategory expr
-        let needResultVariable = hasSelfTailCall || hasBranch optimizedExpr
-        updateCurrentFunction $ record { optimizedBody = optimizedExpr, needResultVariable = needResultVariable }
+        Debug $ "************* Optimized " ++ showNamedCExp 0 optimizedExpr
+        updateCurrentFunction $ record { optimizedBody = optimizedExpr }
 
         resetScope
         let arity = length args
         let argumentNames = jvmSimpleName <$> args
         let argIndices = getArgumentIndices arity argumentNames
         let argInitialTypes = SortedMap.fromList $ List.zip argumentNames $ replicate arity IUnknown
-        scopeIndex <- freshScopeIndex
+        scopeIndex <- newScopeIndex
         let (_, lineStart, lineEnd) = getSourceLocation expr
         let functionScope = MkScope scopeIndex Nothing argInitialTypes argIndices IUnknown arity
             (lineStart, lineEnd) ("", "") []
 
         updateScope scopeIndex functionScope
-        resultVariable <- if needResultVariable then generateVariable resultVariablePrefix else Pure ""
-        when hasSelfTailCall $ do
-            tailRecursionLoopVariable <- generateVariable tailRecursionLoopVariablePrefix
-            addVariableType tailRecursionLoopVariable IInt
-            Pure ()
-
         retTy <- inferExpr IUnknown optimizedExpr
-        when needResultVariable $ do
-            addVariableType resultVariable $ if retTy == IVoid then inferredObjectType else retTy
-            Pure ()
         argumentTypes <- getArgumentTypes argumentNames
         let inferredFunctionType = MkInferredFunctionType retTy argumentTypes
         updateCurrentFunction $ record { inferredFunctionType = inferredFunctionType }

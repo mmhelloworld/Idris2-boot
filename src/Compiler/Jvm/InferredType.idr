@@ -52,6 +52,12 @@ inferredStringType = IRef stringClass
 inferredLambdaType : InferredType
 inferredLambdaType = IRef "java/util/function/Function"
 
+arrayListClass : String
+arrayListClass = "java/util/ArrayList"
+
+arrayListType : InferredType
+arrayListType = IRef arrayListClass
+
 isPrimitive : InferredType -> Bool
 isPrimitive IBool = True
 isPrimitive IByte = True
@@ -84,8 +90,17 @@ doubleThunkType = IRef doubleThunkClass
 thunkType : InferredType
 thunkType = IRef thunkClass
 
+delayedClass : String
+delayedClass = getRuntimeClass "Delayed"
+
+delayedType : InferredType
+delayedType = IRef delayedClass
+
 idrisObjectClass : String
 idrisObjectClass = getRuntimeClass "IdrisObject"
+
+arraysClass : String
+arraysClass = getRuntimeClass "Arrays"
 
 idrisObjectType : InferredType
 idrisObjectType = IRef idrisObjectClass

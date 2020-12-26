@@ -12,18 +12,7 @@
     <name>Idris 2 JVM Bootstrap Runtime</name>
     <artifactId>runtime</artifactId>
 
-
     <dependencies>
-
-        <dependency>
-            <groupId>io.vavr</groupId>
-            <artifactId>vavr</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-        </dependency>
 
         <dependency>
             <groupId>org.assertj</groupId>

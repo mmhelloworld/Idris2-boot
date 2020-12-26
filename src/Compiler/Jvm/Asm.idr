@@ -79,7 +79,6 @@ record Function where
     jvmClassMethodName : Jname
     tailCallCategory : TailCallCategory
     optimizedBody : NamedCExp
-    needResultVariable : Bool
 
 public export
 record AsmState where
@@ -346,8 +345,7 @@ Show Function where
             ("scopes", show $ scopes function),
             ("jvmClassMethodName", show $ jvmClassMethodName function),
             ("tailCallCategory", show $ tailCallCategory function),
-            ("optimizedBody", show $ optimizedBody function),
-            ("needResultVariable", show $ needResultVariable function)
+            ("optimizedBody", show $ optimizedBody function)
         ]
     
 Show AsmState where
@@ -376,13 +374,12 @@ Applicative Asm where
               Bind a (\a' =>
               Pure (f' a')))
 
-
 newAsmState : Core AsmState
 newAsmState = do
     assembler <- coreLift $ FFI.new (JVM_IO Assembler)
     let defaultName = Jqualified "" ""
     let function = MkFunction defaultName (MkInferredFunctionType IUnknown []) SortedMap.empty
-        0 defaultName (MkTailCallCategory False False) (NmCrash emptyFC "uninitialized function") False
+        0 defaultName (MkTailCallCategory False False) (NmCrash emptyFC "uninitialized function")
     pure $ MkAsmState SortedMap.empty function defaultName 0 0 0 0
         SortedMap.empty assembler
 
@@ -467,11 +464,11 @@ getCurrentScopeIndex = currentScopeIndex <$> GetState
 updateCurrentScopeIndex : Nat -> Asm ()
 updateCurrentScopeIndex scopeIndex = updateState $ record {currentScopeIndex = scopeIndex}
 
-freshScopeIndex : Asm Nat
-freshScopeIndex = scopeCounter <$> (getAndUpdateState $ record {scopeCounter $= (+1)})
+newScopeIndex : Asm Nat
+newScopeIndex = scopeCounter <$> (getAndUpdateState $ record {scopeCounter $= (+1)})
 
-freshDynamicVariableIndex : Asm Nat
-freshDynamicVariableIndex = dynamicVariableCounter <$> (getAndUpdateFunction $ record {dynamicVariableCounter $= (+1)})
+newDynamicVariableIndex : Asm Nat
+newDynamicVariableIndex = dynamicVariableCounter <$> (getAndUpdateFunction $ record {dynamicVariableCounter $= (+1)})
 
 resetScope : Asm ()
 resetScope = updateState $
@@ -507,8 +504,8 @@ findJvmMethodNameForIdrisName idrisName = do
 getRootMethodName : Asm Jname
 getRootMethodName = jvmClassMethodName <$> getCurrentFunction
 
-freshLabel : Asm String
-freshLabel = do
+newLabel : Asm String
+newLabel = do
     state <- GetState
     let label = "L" ++ show (labelCounter state)
     updateState $ record { labelCounter $= (+1) }
@@ -532,7 +529,7 @@ getLineNumberLabel lineNumber = do
     case SortedMap.lookup lineNumber (lineNumberLabels state) of
         Just label => Pure label
         Nothing => do
-            label <- freshLabel
+            label <- newLabel
             updateState $ record { lineNumberLabels $= SortedMap.insert lineNumber label }
             Pure label
 
@@ -574,7 +571,7 @@ createVariable var = do
 
 generateVariable : (prefix : String) -> Asm String
 generateVariable prefix = do
-    dynamicVariableIndex <- freshDynamicVariableIndex
+    dynamicVariableIndex <- newDynamicVariableIndex
     let variableName = prefix ++ show dynamicVariableIndex
     createVariable variableName
     Pure variableName
@@ -655,10 +652,10 @@ addVariableType var ty = do
     updateScope scopeIndex (record {variableTypes $= SortedMap.insert var newTy} scope)
     Pure newTy
 
-getLambdaImplementationMethodName : Asm String
-getLambdaImplementationMethodName = do
+getLambdaImplementationMethodName : String -> Asm String
+getLambdaImplementationMethodName prefix = do
     let declaringMethodName = methodName !getRootMethodName
-    pure $ "lambda$" ++ declaringMethodName ++ "$" ++ show !freshLambdaIndex
+    pure $ prefix ++ "$" ++ declaringMethodName ++ "$" ++ show !freshLambdaIndex
 
 getJvmTypeDescriptor : InferredType -> String
 getJvmTypeDescriptor IByte        = "B"
