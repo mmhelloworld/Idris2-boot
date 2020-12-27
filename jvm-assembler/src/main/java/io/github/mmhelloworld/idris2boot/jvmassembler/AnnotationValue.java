@@ -1,7 +1,5 @@
 package io.github.mmhelloworld.idris2boot.jvmassembler;
 
-import lombok.ToString;
-
 import java.util.List;
 
 public abstract class AnnotationValue {
@@ -31,7 +29,6 @@ public abstract class AnnotationValue {
         AnnAnnotation
     }
 
-    @ToString
     public static class AnnString extends AnnotationValue {
         private final String value;
 
@@ -45,7 +42,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnEnum extends AnnotationValue {
         private final String enumTy;
         private final String value;
@@ -65,7 +61,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnInt extends AnnotationValue {
         private final int value;
 
@@ -79,7 +74,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnByte extends AnnotationValue {
         private final byte value;
 
@@ -93,7 +87,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnChar extends AnnotationValue {
         private final char value;
 
@@ -107,7 +100,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnBoolean extends AnnotationValue {
         private final boolean value;
 
@@ -121,7 +113,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnShort extends AnnotationValue {
         private final short value;
 
@@ -135,7 +126,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnLong extends AnnotationValue {
         private final long value;
 
@@ -149,7 +139,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnFloat extends AnnotationValue {
         private final double value;
 
@@ -163,7 +152,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnDouble extends AnnotationValue {
         private final double value;
 
@@ -177,7 +165,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnArray extends AnnotationValue {
         private final List<AnnotationValue> values;
 
@@ -191,7 +178,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnClass extends AnnotationValue {
         private final String value;
 
@@ -205,7 +191,6 @@ public abstract class AnnotationValue {
         }
     }
 
-    @ToString
     public static class AnnAnnotation extends AnnotationValue {
         private final Annotation value;
 

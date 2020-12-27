@@ -14,8 +14,6 @@ import io.github.mmhelloworld.idris2boot.jvmassembler.AnnotationValue.AnnLong;
 import io.github.mmhelloworld.idris2boot.jvmassembler.AnnotationValue.AnnShort;
 import io.github.mmhelloworld.idris2boot.jvmassembler.AnnotationValue.AnnString;
 import io.github.mmhelloworld.idris2boot.jvmassembler.JBsmArg.JBsmArgGetType;
-import io.vavr.Tuple;
-import io.vavr.collection.Stream;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
@@ -29,17 +27,21 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
+import java.util.AbstractMap.SimpleEntry;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.stream.IntStream;
 
 import static java.lang.Boolean.parseBoolean;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
-import static java.util.function.Function.identity;
+import static java.util.stream.Collectors.joining;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 import static org.objectweb.asm.ClassWriter.COMPUTE_FRAMES;
 import static org.objectweb.asm.ClassWriter.COMPUTE_MAXS;
 import static org.objectweb.asm.Opcodes.AALOAD;
@@ -304,10 +306,10 @@ public final class Assembler {
     }
 
     public void interpret() {
-        Map<String, byte[]> classes = Stream.ofAll(cws.entrySet())
-            .map(classNameAndClassWriter -> Tuple.of(classNameAndClassWriter.getKey(),
+        Map<String, byte[]> classes = cws.entrySet().stream()
+            .map(classNameAndClassWriter -> new SimpleEntry<>(classNameAndClassWriter.getKey(),
                 classNameAndClassWriter.getValue().toByteArray()))
-            .toJavaMap(identity());
+            .collect(toMap(Entry::getKey, Entry::getValue));
         try {
             new InterpreterClassLoader(classes)
                 .loadClass("Main")
@@ -401,7 +403,9 @@ public final class Assembler {
             }
 
             String constructorDescriptor = format("(%s%s)V", constructorFieldDescriptor,
-                Stream.fill(constructorParameterCount, "Ljava/lang/Object;").mkString());
+                IntStream.range(0, constructorParameterCount)
+                    .mapToObj(index -> "Ljava/lang/Object;")
+                    .collect(joining()));
             mv = cw.visitMethod(ACC_PUBLIC, "<init>", constructorDescriptor, null, null);
             mv.visitCode();
             mv.visitVarInsn(ALOAD, 0);
@@ -433,16 +437,20 @@ public final class Assembler {
 
                 mv.visitVarInsn(ILOAD, 1);
                 IntStream propertyIndices = IntStream.range(0, constructorParameterCount);
-                Stream<Label> labels = Stream.fill(constructorParameterCount, Label::new);
+                List<Entry<Integer, Label>> labels = IntStream.range(0, constructorParameterCount)
+                    .mapToObj(index -> new SimpleEntry<>(index, new Label()))
+                    .collect(toList());
                 Label switchEnd = new Label();
 
-                mv.visitLookupSwitchInsn(switchEnd, propertyIndices.toArray(), labels.toJavaArray(Label[]::new));
+                mv.visitLookupSwitchInsn(switchEnd, propertyIndices.toArray(), labels.stream()
+                    .map(Entry::getValue)
+                    .toArray(Label[]::new));
                 MethodVisitor caseMv = mv;
-                labels.zipWithIndex()
-                    .forEach(labelAndIndex -> {
-                        caseMv.visitLabel(labelAndIndex._1);
+                labels.forEach(labelAndIndex -> {
+                        caseMv.visitLabel(labelAndIndex.getValue());
                         caseMv.visitVarInsn(ALOAD, 0);
-                        caseMv.visitFieldInsn(GETFIELD, className, "property" + labelAndIndex._2, "Ljava/lang/Object;");
+                        caseMv.visitFieldInsn(GETFIELD, className, "property" + labelAndIndex.getKey(),
+                            "Ljava/lang/Object;");
                         caseMv.visitInsn(ARETURN);
                     });
                 mv.visitLabel(switchEnd);

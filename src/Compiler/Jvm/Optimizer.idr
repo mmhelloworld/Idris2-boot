@@ -433,19 +433,13 @@ mutual
 
     inferExpr exprTy (NmConCase _ sc [] Nothing) = Pure IUnknown
     inferExpr exprTy (NmConCase _ sc [] (Just def)) = do
-        idrisObjectVariable <- generateVariable "constructorSwitchValue"
-        inferExpr idrisObjectType sc
-        addVariableType idrisObjectVariable idrisObjectType
+        inferConstructorSwitchExpr sc
         inferExpr exprTy def
     inferExpr exprTy (NmConCase _ sc [MkNConAlt _ _ args expr] Nothing) = do
-        idrisObjectVariable <- generateVariable "constructorSwitchValue"
-        inferExpr idrisObjectType sc
-        addVariableType idrisObjectVariable idrisObjectType
+        inferConstructorSwitchExpr sc
         inferConCaseExpr exprTy args expr
     inferExpr exprTy (NmConCase _ sc alts def) = do
-        idrisObjectVariable <- generateVariable "constructorSwitchValue"
-        inferExpr idrisObjectType sc
-        addVariableType idrisObjectVariable idrisObjectType
+        inferConstructorSwitchExpr sc
         let hasTypeCase = any isTypeCase alts
         when hasTypeCase $ do
             constantExprVariable <- generateVariable "constructorCaseExpr"
@@ -493,6 +487,15 @@ mutual
     inferExpr exprTy (NmErased fc) = pure exprTy
     inferExpr exprTy (NmCrash fc msg) = pure exprTy
     inferExpr exprTy expr = Throw (getFC expr) ("Unsupported expr " ++ show expr)
+
+    inferConstructorSwitchExpr : NamedCExp -> Asm ()
+    inferConstructorSwitchExpr sc = do
+        idrisObjectVariable <- case sc of
+            (NmLocal _ var) => Pure $ jvmSimpleName var
+            _ => generateVariable "constructorSwitchValue"
+        inferExpr idrisObjectType sc
+        addVariableType idrisObjectVariable idrisObjectType
+        Pure ()
 
     inferExprConstAlt : InferredType -> NamedConstAlt -> Asm InferredType
     inferExprConstAlt returnType (MkNConstAlt _ expr) = inferExprWithNewScope returnType expr

@@ -274,21 +274,13 @@ mutual
 
     assembleExpr ret returnType (NmConCase fc sc [] Nothing) = do defaultValue returnType; ret
     assembleExpr ret returnType (NmConCase fc sc [] (Just expr)) = do
-        dynamicVariableIndex <- newDynamicVariableIndex
-        let idrisObjectVariableName = "constructorSwitchValue" ++ show dynamicVariableIndex
-        idrisObjectVariableIndex <- getVariableIndex idrisObjectVariableName
-        assembleExpr (storeVar idrisObjectType idrisObjectType idrisObjectVariableIndex) idrisObjectType sc
+        assembleConstructorSwitchExpr sc
         assembleExpr ret returnType expr
     assembleExpr ret returnType (NmConCase fc sc [MkNConAlt name _ args expr] Nothing) = do
-        dynamicVariableIndex <- newDynamicVariableIndex
-        let idrisObjectVariableName = "constructorSwitchValue" ++ show dynamicVariableIndex
-        idrisObjectVariableIndex <- getVariableIndex idrisObjectVariableName
-        assembleExpr (storeVar idrisObjectType idrisObjectType idrisObjectVariableIndex) idrisObjectType sc
+        idrisObjectVariableIndex <- assembleConstructorSwitchExpr sc
         assembleConCaseExpr ret returnType idrisObjectVariableIndex name args expr
     assembleExpr ret returnType (NmConCase fc sc alts def) = do
-        let idrisObjectVariableName = "constructorSwitchValue" ++ show !newDynamicVariableIndex
-        idrisObjectVariableIndex <- getVariableIndex idrisObjectVariableName
-        assembleExpr (storeVar idrisObjectType idrisObjectType idrisObjectVariableIndex) idrisObjectType sc
+        idrisObjectVariableIndex <- assembleConstructorSwitchExpr sc
         let hasTypeCase = any isTypeCase alts
         let constructorType = if hasTypeCase then "Ljava/lang/String;" else "I"
         loadVar !getVariableTypes idrisObjectType idrisObjectType idrisObjectVariableIndex
@@ -326,7 +318,14 @@ mutual
         asmCast inferredObjectType exprTy
         ret
     assembleExpr _ _ expr = Throw (getFC expr) $ "Cannot compile " ++ show expr ++ " yet"
-    
+
+    assembleConstructorSwitchExpr : NamedCExp -> Asm Nat
+    assembleConstructorSwitchExpr (NmLocal _ loc) = getVariableIndex $ jvmSimpleName loc
+    assembleConstructorSwitchExpr sc = do
+        idrisObjectVariableIndex <- getVariableIndex $ "constructorSwitchValue" ++ show !newDynamicVariableIndex
+        assembleExpr (storeVar idrisObjectType idrisObjectType idrisObjectVariableIndex) idrisObjectType sc
+        Pure idrisObjectVariableIndex
+
     assembleExprBinaryOp : Asm () -> InferredType -> InferredType -> Asm () -> NamedCExp -> NamedCExp -> Asm ()
     assembleExprBinaryOp ret returnType exprType operator expr1 expr2 =
         assembleExpr (assembleExpr ret1 exprType expr2) exprType expr1 where
@@ -794,6 +793,7 @@ mutual
             addLambdaStartLabel scope labelStart
             maybe (Pure ()) (\parentScopeIndex => updateScopeStartLabel parentScopeIndex labelStart) (parentIndex scope)
             let ret = if isExtracted then asmReturn lambdaBodyReturnType else castReturn lambdaType lambdaBodyReturnType
+            when isExtracted $ Debug $ "extracted expr " ++ showNamedCExp 0 expr
             assembleExpr ret lambdaBodyReturnType expr
             addLambdaEndLabel scope labelEnd
             maybe (Pure ()) (\parentScopeIndex => updateScopeEndLabel parentScopeIndex labelEnd) (parentIndex scope)
