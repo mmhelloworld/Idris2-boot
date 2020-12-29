@@ -29,6 +29,7 @@ import YafflePaths
 import IdrisJvm.IO
 import IdrisJvm.System
 import IdrisJvm.File
+import Java.Lang
 
 import Compiler.Jvm.Optimizer
 import Compiler.Jvm.InferredType
@@ -37,6 +38,7 @@ import Core.FC
 import Core.CompileExpr
 import Data.SortedMap
 
+%hide Java.Lang.System.exit
 %default covering
 %flag C "-g"
 
@@ -118,6 +120,12 @@ tryTTM (Metadata f :: _) = do dumpTTM f
                               pure True
 tryTTM (c :: cs) = tryTTM cs
 
+jvmInfo : String
+jvmInfo = getJvmProperty "java.vm.vendor" ++ " " ++ getJvmProperty "java.vm.name" ++ ", " ++
+    getJvmProperty "java.version"
+  where
+    getJvmProperty : String -> String
+    getJvmProperty name = unsafePerformIO $ System.getPropertyWithDefault name ""
 
 banner : String
 banner = "     ____    __     _         ___                                           \n" ++
@@ -127,7 +135,7 @@ banner = "     ____    __     _         ___                                     
          " /___/\\__,_/_/  /_/____/   /____/      Type :? for help                     \n" ++
          "\n" ++
          "[BOOTSTRAP VERSION: No longer developed, except as a bootstrapping step.]\n" ++
-         "Welcome to Idris 2.  Enjoy yourself!"
+         "Welcome to Idris 2 on the JVM (" ++ jvmInfo ++ ").  Enjoy yourself!"
 
 checkVerbose : List CLOpt -> Bool
 checkVerbose [] = False

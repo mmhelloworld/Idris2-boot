@@ -109,6 +109,13 @@ chezTests
       "chez007", "chez008", "chez009", "chez010", "chez011", "chez012",
       "chez013", "chez014", "chez015", "chez016", "chez017", "chez018",
       "reg001"]
+      
+jvmTests : List String
+jvmTests
+   = ["jvm001", "jvm002", "jvm003", "jvm004", "jvm005", "jvm006",
+      "jvm007", "jvm008", "jvm009", "jvm011", "jvm012",
+      "jvm014", "jvm015", "jvm016", "jvm017", "jvm018",
+      "reg001"]
 
 ideModeTests : List String
 ideModeTests
@@ -261,15 +268,16 @@ main
          let (Just opts) = options args
               | _ => do print args
                         putStrLn usage
-         let filteredNonCGTests =
+         let filteredDefaultTests =
               filterTests opts $ concat
                  [ testPaths "ttimp" ttimpTests
                  , testPaths "idris2" idrisTests
                  , testPaths "typedd-book" typeddTests
                  , testPaths "ideMode" ideModeTests
+                 , testPaths "jvm" jvmTests
                  ]
          let filteredChezTests = filterTests opts (testPaths "chez" chezTests)
-         nonCGTestRes <- traverse (runTest opts) filteredNonCGTests
+         nonCGTestRes <- traverse (runTest opts) filteredDefaultTests
          chezTestRes <- if length filteredChezTests > 0
               then runChezTests opts filteredChezTests
               else pure []

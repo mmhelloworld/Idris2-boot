@@ -26,11 +26,13 @@ mutual
     showNamedCExp : Nat -> NamedCExp -> String
     showNamedCExp n (NmLocal fc x) = show x
     showNamedCExp n (NmRef fc x) = show x
-    showNamedCExp n (NmLam fc x y) = "\n" ++ indent n ("\\" ++ show x ++ " -> \n" ++ indent n (showNamedCExp (n + 1) y))
+    showNamedCExp n (NmLam fc x y) = "\\" ++ show x ++ " -> \n" ++ showNamedCExp (n + 1) y
     showNamedCExp n (NmLet fc x y z) = "\n" ++ indent n ("let " ++ show x ++ " = \n") ++
         showNamedCExp (n + 1) y ++ "\n" ++ indent n "in\n" ++ indent n (showNamedCExp (n + 1) z)
-    showNamedCExp n (NmApp fc x xs) = showNamedCExp n x ++ "(" ++
-        (showSep ", " $ showNamedCExp n <$> xs) ++ ")"
+    showNamedCExp n (NmApp fc (NmRef _ name) xs) = indent n (show name) ++ "(" ++
+        (showSep ", " $ showNamedCExp (n + 1) <$> xs) ++ ")"
+    showNamedCExp n (NmApp fc x xs) = showNamedCExp n x ++ "<$>(" ++
+        (showSep ", " $ showNamedCExp (n + 1) <$> xs) ++ ")"
     showNamedCExp n (NmCon fc x tag xs) = "new " ++ show x ++ "(" ++ show tag ++
         ", " ++ (showSep "," $ showNamedCExp n <$> xs) ++ ")"
     showNamedCExp n (NmOp fc op xs) = show op ++ "(" ++
@@ -57,7 +59,7 @@ mutual
     export
     showNamedConAlt : Nat -> NamedConAlt -> String
     showNamedConAlt n (MkNConAlt x tag args exp) = indent n ("case " ++ show x ++ "(" ++ show tag ++ "): \n") ++
-        indent (n + 1) ("bind " ++ show args ++ ";") ++ showNamedCExp (n + 1) exp
+        indent (n + 1) ("bind " ++ show args ++ ";\n") ++ (indent (n + 1) $ showNamedCExp (n + 1) exp)
 
     export
     showNamedConstAlt : Nat -> NamedConstAlt -> String

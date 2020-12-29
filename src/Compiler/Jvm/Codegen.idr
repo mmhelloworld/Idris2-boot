@@ -66,13 +66,9 @@ enterScope : Asm ()
 enterScope = do
     scopeIndex <- newScopeIndex
     updateCurrentScopeIndex scopeIndex
-    scope <- getScope scopeIndex
-    Debug $ "Entering scope " ++ show scope
 
 exitScope : Scope -> Asm ()
-exitScope targetScope = do
-    Debug $ "Exiting scope " ++ show !(getScope !getCurrentScopeIndex)
-    updateCurrentScopeIndex $ index targetScope
+exitScope targetScope = updateCurrentScopeIndex $ index targetScope
 
 withScope : Lazy (Asm ()) -> Asm ()
 withScope op = do
@@ -164,23 +160,22 @@ getHashCodeCasesWithLabels : SortedMap Int (List (Nat, a)) ->
 getHashCodeCasesWithLabels positionAndAltsByHash = traverse labelHashCodeAlt $ SortedMap.toList positionAndAltsByHash
 
 mutual
-    assembleExpr : (ret : Asm ()) -> InferredType -> NamedCExp -> Asm ()
-
-    assembleExpr ret returnType (NmDelay _ expr) = assembleSubMethodWithScope ret returnType Nothing Nothing expr
-
-    assembleExpr ret returnType (NmLocal _ loc) = do
+    assembleExpr : (isTailCall: Bool) -> InferredType -> NamedCExp -> Asm ()
+    assembleExpr isTailCall returnType (NmDelay _ expr) = 
+        assembleSubMethodWithScope isTailCall returnType Nothing Nothing expr
+    assembleExpr isTailCall returnType (NmLocal _ loc) = do
         let variableName = jvmSimpleName loc
         index <- getVariableIndex variableName
         variableType <- getVariableType variableName
         loadVar !getVariableTypes variableType returnType index
-        ret
+        when isTailCall $ asmReturn returnType
 
-    assembleExpr ret returnType (NmApp _ (NmLam _ var body) [argument]) =
-        assembleSubMethodWithScope ret returnType (Just argument) (Just var) body
-    assembleExpr ret returnType (NmLam _ parameter body) =
-        assembleSubMethodWithScope ret returnType Nothing (Just parameter) body
+    assembleExpr isTailCall returnType (NmApp _ (NmLam _ var body) [argument]) =
+        assembleSubMethodWithScope isTailCall returnType (Just argument) (Just var) body
+    assembleExpr isTailCall returnType (NmLam _ parameter body) =
+        assembleSubMethodWithScope isTailCall returnType Nothing (Just parameter) body
 
-    assembleExpr ret returnType (NmLet _ var value expr) = do
+    assembleExpr isTailCall returnType (NmLet _ var value expr) = do
         valueScopeStartLabel <- newLabel
         CreateLabel valueScopeStartLabel
         targetExprScopeStartLabel <- newLabel
@@ -198,7 +193,8 @@ mutual
             updateScopeEndLabel valueScopeIndex targetExprScopeStartLabel
             LabelStart valueScopeStartLabel
             addLineNumber lineNumberStart valueScopeStartLabel
-            assembleExpr (storeVar variableType variableType variableIndex) variableType value
+            assembleExpr False variableType value
+            storeVar variableType variableType variableIndex
 
         withScope $ do
             targetExprScopeIndex <- getCurrentScopeIndex
@@ -208,7 +204,7 @@ mutual
             LabelStart targetExprScopeStartLabel
             addLineNumber lineNumberStart targetExprScopeStartLabel
             updateScopeEndLabel targetExprScopeIndex methodEndLabel
-            assembleExpr ret returnType expr
+            assembleExpr isTailCall returnType expr
 
     -- Tail recursion. Store arguments and recur to the beginning of the method
     assembleExpr _ returnType app@(NmApp fc (NmRef nameFc (UN ":__jvmTailRec__:")) args) =
@@ -221,7 +217,7 @@ mutual
                 traverse_ storeParameter $ List.zip [0 .. lastArgIndex] argsWithTypes
                 Goto methodStartLabel
 
-    assembleExpr ret returnType (NmApp _ (NmRef _ idrisName) args) = do
+    assembleExpr isTailCall returnType (NmApp _ (NmRef _ idrisName) args) = do
         -- Not a tail call, unwrap possible trampoline thunks
         let jname = jvmName idrisName
         functionName <- getJvmMethodNameForIdrisName jname
@@ -232,21 +228,17 @@ mutual
         let methodDescriptor = getMethodDescriptor $ MkInferredFunctionType methodReturnType parameterTypes
         InvokeMethod InvokeStatic (className functionName) (methodName functionName) methodDescriptor False
         asmCast methodReturnType returnType
-        ret
+        when isTailCall $ asmReturn returnType
 
-    assembleExpr ret returnType (NmApp _ lambdaVariable [arg]) =
-        assembleExpr ret1 inferredLambdaType lambdaVariable where
-            ret2 : Asm ()
-            ret2 = do
-                InvokeMethod InvokeInterface "java/util/function/Function" "apply"
-                    "(Ljava/lang/Object;)Ljava/lang/Object;" True
-                asmCast inferredObjectType returnType
-                ret
+    assembleExpr isTailCall returnType (NmApp _ lambdaVariable [arg]) = do
+        assembleExpr False inferredLambdaType lambdaVariable
+        assembleExpr False inferredObjectType arg
+        InvokeMethod InvokeInterface "java/util/function/Function" "apply"
+            "(Ljava/lang/Object;)Ljava/lang/Object;" True
+        asmCast inferredObjectType returnType
+        when isTailCall $ asmReturn returnType
 
-            ret1 : Asm ()
-            ret1 = assembleExpr ret2 inferredObjectType arg
-
-    assembleExpr ret returnType expr@(NmCon fc name tag args) = do
+    assembleExpr isTailCall returnType expr@(NmCon fc name tag args) = do
         let fileName = fst $ getSourceLocation expr
         let constructorClassName = jvmSimpleName name
         let constructorType = maybe inferredStringType (const IInt) tag
@@ -261,25 +253,30 @@ mutual
         CreateIdrisConstructorClass constructorClassName (isNothing tag) constructorParameterCount
         InvokeMethod InvokeSpecial constructorClassName "<init>" descriptor False
         asmCast (IRef constructorClassName) returnType
-        ret
+        when isTailCall $ asmReturn returnType
 
-    assembleExpr ret returnType (NmOp fc fn args) = assembleExprOp ret returnType fc fn args
-    assembleExpr ret returnType (NmExtPrim fc p args) = jvmExtPrim ret returnType (toPrim p) args
-    assembleExpr ret returnType (NmForce _ expr) = assembleExpr ret1 delayedType expr where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeStatic runtimeClass "force" "(Ljava/lang/Object;)Ljava/lang/Object;" False
-            asmCast inferredObjectType returnType
-            ret
+    assembleExpr isTailCall returnType (NmOp fc fn args) = do
+        assembleExprOp returnType fc fn args
+        when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmExtPrim fc p args) = do
+        jvmExtPrim returnType (toPrim p) args
+        when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmForce _ expr) = do
+        assembleExpr False delayedType expr
+        InvokeMethod InvokeStatic runtimeClass "force" "(Ljava/lang/Object;)Ljava/lang/Object;" False
+        asmCast inferredObjectType returnType
+        when isTailCall $ asmReturn returnType
 
-    assembleExpr ret returnType (NmConCase fc sc [] Nothing) = do defaultValue returnType; ret
-    assembleExpr ret returnType (NmConCase fc sc [] (Just expr)) = do
+    assembleExpr isTailCall returnType (NmConCase fc sc [] Nothing) = do
+        defaultValue returnType
+        when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmConCase fc sc [] (Just expr)) = do
         assembleConstructorSwitchExpr sc
-        assembleExpr ret returnType expr
-    assembleExpr ret returnType (NmConCase fc sc [MkNConAlt name _ args expr] Nothing) = do
+        assembleExpr isTailCall returnType expr
+    assembleExpr isTailCall returnType (NmConCase fc sc [MkNConAlt name _ args expr] Nothing) = do
         idrisObjectVariableIndex <- assembleConstructorSwitchExpr sc
-        assembleConCaseExpr ret returnType idrisObjectVariableIndex name args expr
-    assembleExpr ret returnType (NmConCase fc sc alts def) = do
+        assembleConCaseExpr returnType idrisObjectVariableIndex name args expr
+    assembleExpr isTailCall returnType (NmConCase fc sc alts def) = do
         idrisObjectVariableIndex <- assembleConstructorSwitchExpr sc
         let hasTypeCase = any isTypeCase alts
         let constructorType = if hasTypeCase then "Ljava/lang/String;" else "I"
@@ -287,427 +284,378 @@ mutual
         let constructorGetter = if hasTypeCase then "getStringConstructorId" else "getConstructorId"
         InvokeMethod InvokeInterface idrisObjectClass constructorGetter ("()" ++ constructorType) True
         if hasTypeCase then
-            assembleStringConstructorSwitch ret returnType fc idrisObjectVariableIndex alts def
-        else assembleConstructorSwitch ret returnType fc idrisObjectVariableIndex alts def
+            assembleStringConstructorSwitch returnType fc idrisObjectVariableIndex alts def
+        else assembleConstructorSwitch returnType fc idrisObjectVariableIndex alts def
 
-    assembleExpr ret returnType (NmConstCase fc sc [] Nothing) = do defaultValue returnType; ret
-    assembleExpr ret returnType (NmConstCase fc sc [] (Just expr)) = assembleExpr ret returnType expr
-    assembleExpr ret returnType (NmConstCase fc sc alts@(_ :: _) def) = do
+    assembleExpr isTailCall returnType (NmConstCase fc sc [] Nothing) = do
+        defaultValue returnType
+        when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmConstCase fc sc [] (Just expr)) = assembleExpr isTailCall returnType expr
+    assembleExpr isTailCall returnType (NmConstCase fc sc alts@(_ :: _) def) = do
         constantType <- getConstantType alts
-        assembleConstantSwitch ret returnType constantType fc sc alts def
+        assembleConstantSwitch returnType constantType fc sc alts def
 
-    assembleExpr ret returnType (NmPrimVal fc (I value)) = do Iconst value; asmCast IInt returnType; ret
-    assembleExpr ret returnType (NmPrimVal fc (BI value)) = do
+    assembleExpr isTailCall returnType (NmPrimVal fc (I value)) = do
+        Iconst value
+        asmCast IInt returnType
+        when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmPrimVal fc (BI value)) = do
         loadBigInteger $ show value
         asmCast inferredBigIntegerType returnType
-        ret
-    assembleExpr ret returnType (NmPrimVal fc (Str value)) = do
+        when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmPrimVal fc (Str value)) = do
         Ldc $ StringConst value
         asmCast inferredStringType returnType
-        ret
-    assembleExpr ret returnType (NmPrimVal fc (Ch value)) = do Iconst (cast value); asmCast IChar returnType; ret
-    assembleExpr ret returnType (NmPrimVal fc (Db value)) = do Ldc $ DoubleConst value; asmCast IDouble returnType; ret
-    assembleExpr ret returnType (NmPrimVal fc WorldVal) = do Aconstnull; ret
-    assembleExpr ret IInt (NmErased fc) = do Iconst 0; ret
-    assembleExpr ret IChar (NmErased fc) = do Iconst 0; ret
-    assembleExpr ret IDouble (NmErased fc) =  do Ldc $ DoubleConst 0; ret
-    assembleExpr ret _ (NmErased fc) = do Aconstnull; ret
-    assembleExpr ret exprTy (NmCrash fc msg) = do
+        when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmPrimVal fc (Ch value)) = do
+        Iconst (cast value)
+        asmCast IChar returnType
+        when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmPrimVal fc (Db value)) = do
+        Ldc $ DoubleConst value
+        asmCast IDouble returnType
+        when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmPrimVal fc WorldVal) = do Aconstnull; when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall IInt (NmErased fc) = do Iconst 0; when isTailCall $ asmReturn IInt
+    assembleExpr isTailCall IChar (NmErased fc) = do Iconst 0; when isTailCall $ asmReturn IChar
+    assembleExpr isTailCall IDouble (NmErased fc) =  do Ldc $ DoubleConst 0; when isTailCall $ asmReturn IDouble
+    assembleExpr isTailCall returnType (NmErased fc) = do Aconstnull; when isTailCall $ asmReturn returnType
+    assembleExpr isTailCall returnType (NmCrash fc msg) = do
         Ldc $ StringConst msg
         InvokeMethod InvokeStatic runtimeClass "crash" "(Ljava/lang/String;)Ljava/lang/Object;" False
-        asmCast inferredObjectType exprTy
-        ret
+        asmCast inferredObjectType returnType
+        when isTailCall $ asmReturn returnType
     assembleExpr _ _ expr = Throw (getFC expr) $ "Cannot compile " ++ show expr ++ " yet"
 
     assembleConstructorSwitchExpr : NamedCExp -> Asm Nat
     assembleConstructorSwitchExpr (NmLocal _ loc) = getVariableIndex $ jvmSimpleName loc
     assembleConstructorSwitchExpr sc = do
         idrisObjectVariableIndex <- getVariableIndex $ "constructorSwitchValue" ++ show !newDynamicVariableIndex
-        assembleExpr (storeVar idrisObjectType idrisObjectType idrisObjectVariableIndex) idrisObjectType sc
+        assembleExpr False idrisObjectType sc
+        storeVar idrisObjectType idrisObjectType idrisObjectVariableIndex
         Pure idrisObjectVariableIndex
 
-    assembleExprBinaryOp : Asm () -> InferredType -> InferredType -> Asm () -> NamedCExp -> NamedCExp -> Asm ()
-    assembleExprBinaryOp ret returnType exprType operator expr1 expr2 =
-        assembleExpr (assembleExpr ret1 exprType expr2) exprType expr1 where
-            ret1 : Asm ()
-            ret1 = do
-                operator
-                asmCast exprType returnType
-                ret
+    assembleExprBinaryOp : InferredType -> InferredType -> Asm () -> NamedCExp -> NamedCExp -> Asm ()
+    assembleExprBinaryOp returnType exprType operator expr1 expr2 = do
+        assembleExpr False exprType expr1
+        assembleExpr False exprType expr2
+        operator
+        asmCast exprType returnType
 
-    assembleExprBinaryBoolOp : Asm () -> InferredType -> InferredType -> (String -> Asm ()) ->
+    assembleExprBinaryBoolOp : InferredType -> InferredType -> (String -> Asm ()) ->
         NamedCExp -> NamedCExp -> Asm ()
-    assembleExprBinaryBoolOp ret returnType exprType operator expr1 expr2 =
-        assembleExpr (assembleExpr ret1 exprType expr2) exprType expr1
-      where
-        ret1 : Asm ()
-        ret1 = do
-            ifLabel <- newLabel
-            CreateLabel ifLabel
-            elseLabel <- newLabel
-            CreateLabel elseLabel
-            endLabel <- newLabel
-            CreateLabel endLabel
-            operator elseLabel
-            LabelStart ifLabel
-            scope <- getScope !getCurrentScopeIndex
-            Iconst 1
-            Goto endLabel
-            LabelStart elseLabel
-            Iconst 0
-            LabelStart endLabel
-            ret
+    assembleExprBinaryBoolOp returnType exprType operator expr1 expr2 = do
+        assembleExpr False exprType expr1
+        assembleExpr False exprType expr2
+        ifLabel <- newLabel
+        CreateLabel ifLabel
+        elseLabel <- newLabel
+        CreateLabel elseLabel
+        endLabel <- newLabel
+        CreateLabel endLabel
+        operator elseLabel
+        LabelStart ifLabel
+        scope <- getScope !getCurrentScopeIndex
+        Iconst 1
+        Goto endLabel
+        LabelStart elseLabel
+        Iconst 0
+        LabelStart endLabel
+        asmCast IInt returnType
 
-    assembleExprComparableBinaryBoolOp : Asm () -> InferredType -> String -> (String -> Asm ()) ->
+    assembleExprComparableBinaryBoolOp : InferredType -> String -> (String -> Asm ()) ->
         NamedCExp -> NamedCExp -> Asm ()
-    assembleExprComparableBinaryBoolOp ret returnType className operator expr1 expr2 =
+    assembleExprComparableBinaryBoolOp returnType className operator expr1 expr2 = do
         let exprType = IRef className
-        in assembleExpr (assembleExpr ret1 exprType expr2) exprType expr1
-      where
-        ret1 : Asm ()
-        ret1 = do
-            ifLabel <- newLabel
-            CreateLabel ifLabel
-            elseLabel <- newLabel
-            CreateLabel elseLabel
-            endLabel <- newLabel
-            CreateLabel endLabel
-            InvokeMethod InvokeVirtual className "compareTo" ("(L" ++ className ++ ";)I") False
-            operator elseLabel
-            LabelStart ifLabel
-            scope <- getScope !getCurrentScopeIndex
-            Iconst 1
-            Goto endLabel
-            LabelStart elseLabel
-            Iconst 0
-            LabelStart endLabel
-            ret
+        assembleExpr False exprType expr1
+        assembleExpr False exprType expr2
+        ifLabel <- newLabel
+        CreateLabel ifLabel
+        elseLabel <- newLabel
+        CreateLabel elseLabel
+        endLabel <- newLabel
+        CreateLabel endLabel
+        InvokeMethod InvokeVirtual className "compareTo" ("(L" ++ className ++ ";)I") False
+        operator elseLabel
+        LabelStart ifLabel
+        scope <- getScope !getCurrentScopeIndex
+        Iconst 1
+        Goto endLabel
+        LabelStart elseLabel
+        Iconst 0
+        LabelStart endLabel
+        asmCast IInt returnType
 
-    assembleExprUnaryOp : (Asm ()) -> InferredType -> InferredType -> Asm () -> NamedCExp -> Asm ()
-    assembleExprUnaryOp ret returnType exprType operator expr =  assembleExpr ret1 exprType expr where
-        ret1 : Asm ()
-        ret1 = do
-            operator
-            asmCast exprType returnType
-            ret
+    assembleExprUnaryOp : InferredType -> InferredType -> Asm () -> NamedCExp -> Asm ()
+    assembleExprUnaryOp returnType exprType operator expr = do
+        assembleExpr False exprType expr
+        operator
+        asmCast exprType returnType
 
     assembleStrCons : InferredType -> (char: NamedCExp) -> (str: NamedCExp) -> Asm ()
     assembleStrCons returnType char str = do
         New "java/lang/StringBuilder"
         Dup
         InvokeMethod InvokeSpecial "java/lang/StringBuilder" "<init>" "()V" False
-        assembleExpr ret1 IChar char
-      where
-        ret2 : Asm ()
-        ret2 = do
-            InvokeMethod InvokeVirtual "java/lang/StringBuilder" "append"
-                "(Ljava/lang/String;)Ljava/lang/StringBuilder;" False
-            InvokeMethod InvokeVirtual "java/lang/StringBuilder" "toString" "()Ljava/lang/String;" False
-            asmCast inferredStringType returnType
-
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeVirtual "java/lang/StringBuilder" "append" "(C)Ljava/lang/StringBuilder;" False
-            assembleExpr ret2 inferredStringType str
+        assembleExpr False IChar char
+        InvokeMethod InvokeVirtual "java/lang/StringBuilder" "append" "(C)Ljava/lang/StringBuilder;" False
+        assembleExpr False inferredStringType str
+        InvokeMethod InvokeVirtual "java/lang/StringBuilder" "append"
+            "(Ljava/lang/String;)Ljava/lang/StringBuilder;" False
+        InvokeMethod InvokeVirtual "java/lang/StringBuilder" "toString" "()Ljava/lang/String;" False
+        asmCast inferredStringType returnType
 
     assembleStrReverse : InferredType -> NamedCExp -> Asm ()
     assembleStrReverse returnType str = do
         New "java/lang/StringBuilder"
         Dup
-        assembleExpr ret1 inferredStringType str
-      where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeSpecial "java/lang/StringBuilder" "<init>" "(Ljava/lang/String;)V" False
-            InvokeMethod InvokeVirtual "java/lang/StringBuilder" "reverse" "()Ljava/lang/StringBuilder;" False
-            InvokeMethod InvokeVirtual "java/lang/StringBuilder" "toString" "()Ljava/lang/String;" False
-            asmCast inferredStringType returnType
+        assembleExpr False inferredStringType str
+        InvokeMethod InvokeSpecial "java/lang/StringBuilder" "<init>" "(Ljava/lang/String;)V" False
+        InvokeMethod InvokeVirtual "java/lang/StringBuilder" "reverse" "()Ljava/lang/StringBuilder;" False
+        InvokeMethod InvokeVirtual "java/lang/StringBuilder" "toString" "()Ljava/lang/String;" False
+        asmCast inferredStringType returnType
 
-    assembleExprOp : Asm () -> InferredType -> FC -> PrimFn arity -> Vect arity NamedCExp -> Asm ()
-    assembleExprOp ret returnType fc (Add IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Iadd x y
-    assembleExprOp ret returnType fc (Sub IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Isub x y
-    assembleExprOp ret returnType fc (Mul IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Imul x y
-    assembleExprOp ret returnType fc (Div IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Idiv x y
-    assembleExprOp ret returnType fc (Mod IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Irem x y
-    assembleExprOp ret returnType fc (Neg IntType) [x] = assembleExprUnaryOp ret returnType IInt Ineg x
-    assembleExprOp ret returnType fc (ShiftL IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Ishl x y
-    assembleExprOp ret returnType fc (ShiftR IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Ishr x y
-    assembleExprOp ret returnType fc (BAnd IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Iand x y
-    assembleExprOp ret returnType fc (BOr IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Ior x y
-    assembleExprOp ret returnType fc (BXOr IntType) [x, y] = assembleExprBinaryOp ret returnType IInt Ixor x y
+    assembleExprOp : InferredType -> FC -> PrimFn arity -> Vect arity NamedCExp -> Asm ()
+    assembleExprOp returnType fc (Add IntType) [x, y] = assembleExprBinaryOp returnType IInt Iadd x y
+    assembleExprOp returnType fc (Sub IntType) [x, y] = assembleExprBinaryOp returnType IInt Isub x y
+    assembleExprOp returnType fc (Mul IntType) [x, y] = assembleExprBinaryOp returnType IInt Imul x y
+    assembleExprOp returnType fc (Div IntType) [x, y] = assembleExprBinaryOp returnType IInt Idiv x y
+    assembleExprOp returnType fc (Mod IntType) [x, y] = assembleExprBinaryOp returnType IInt Irem x y
+    assembleExprOp returnType fc (Neg IntType) [x] = assembleExprUnaryOp returnType IInt Ineg x
+    assembleExprOp returnType fc (ShiftL IntType) [x, y] = assembleExprBinaryOp returnType IInt Ishl x y
+    assembleExprOp returnType fc (ShiftR IntType) [x, y] = assembleExprBinaryOp returnType IInt Ishr x y
+    assembleExprOp returnType fc (BAnd IntType) [x, y] = assembleExprBinaryOp returnType IInt Iand x y
+    assembleExprOp returnType fc (BOr IntType) [x, y] = assembleExprBinaryOp returnType IInt Ior x y
+    assembleExprOp returnType fc (BXOr IntType) [x, y] = assembleExprBinaryOp returnType IInt Ixor x y
 
-    assembleExprOp ret returnType fc (Add IntegerType) [x, y] =
+    assembleExprOp returnType fc (Add IntegerType) [x, y] =
         let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "add"
                 "(Ljava/math/BigInteger;)Ljava/math/BigInteger;" False
-        in assembleExprBinaryOp ret returnType inferredBigIntegerType op x y
-    assembleExprOp ret returnType fc (Sub IntegerType) [x, y] =
+        in assembleExprBinaryOp returnType inferredBigIntegerType op x y
+    assembleExprOp returnType fc (Sub IntegerType) [x, y] =
         let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "subtract"
                 "(Ljava/math/BigInteger;)Ljava/math/BigInteger;" False
-        in assembleExprBinaryOp ret returnType inferredBigIntegerType op x y
-    assembleExprOp ret returnType fc (Mul IntegerType) [x, y] =
+        in assembleExprBinaryOp returnType inferredBigIntegerType op x y
+    assembleExprOp returnType fc (Mul IntegerType) [x, y] =
         let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "multiply"
                 "(Ljava/math/BigInteger;)Ljava/math/BigInteger;" False
-        in assembleExprBinaryOp ret returnType inferredBigIntegerType op x y
-    assembleExprOp ret returnType fc (Div IntegerType) [x, y] =
+        in assembleExprBinaryOp returnType inferredBigIntegerType op x y
+    assembleExprOp returnType fc (Div IntegerType) [x, y] =
         let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "divide"
                 "(Ljava/math/BigInteger;)Ljava/math/BigInteger;" False
-        in assembleExprBinaryOp ret returnType inferredBigIntegerType op x y
-    assembleExprOp ret returnType fc (Mod IntegerType) [x, y] =
+        in assembleExprBinaryOp returnType inferredBigIntegerType op x y
+    assembleExprOp returnType fc (Mod IntegerType) [x, y] =
         let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "remainder"
                 "(Ljava/math/BigInteger;)Ljava/math/BigInteger;" False
-        in assembleExprBinaryOp ret returnType inferredBigIntegerType op x y
-    assembleExprOp ret returnType fc (Neg IntegerType) [x] =
+        in assembleExprBinaryOp returnType inferredBigIntegerType op x y
+    assembleExprOp returnType fc (Neg IntegerType) [x] =
         let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "negate"
                 "()Ljava/math/BigInteger;" False
-        in assembleExprUnaryOp ret returnType inferredBigIntegerType op x
+        in assembleExprUnaryOp returnType inferredBigIntegerType op x
 
-    assembleExprOp ret returnType fc (Add DoubleType) [x, y] = assembleExprBinaryOp ret returnType IDouble Dadd x y
-    assembleExprOp ret returnType fc (Sub DoubleType) [x, y] = assembleExprBinaryOp ret returnType IDouble Dsub x y
-    assembleExprOp ret returnType fc (Mul DoubleType) [x, y] = assembleExprBinaryOp ret returnType IDouble Dmul x y
-    assembleExprOp ret returnType fc (Div DoubleType) [x, y] = assembleExprBinaryOp ret returnType IDouble Ddiv x y
-    assembleExprOp ret returnType fc (Neg DoubleType) [x] = assembleExprUnaryOp ret returnType IDouble Dneg x
+    assembleExprOp returnType fc (Add DoubleType) [x, y] = assembleExprBinaryOp returnType IDouble Dadd x y
+    assembleExprOp returnType fc (Sub DoubleType) [x, y] = assembleExprBinaryOp returnType IDouble Dsub x y
+    assembleExprOp returnType fc (Mul DoubleType) [x, y] = assembleExprBinaryOp returnType IDouble Dmul x y
+    assembleExprOp returnType fc (Div DoubleType) [x, y] = assembleExprBinaryOp returnType IDouble Ddiv x y
+    assembleExprOp returnType fc (Neg DoubleType) [x] = assembleExprUnaryOp returnType IDouble Dneg x
 
-    assembleExprOp ret returnType fc (LT CharType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmpge x y
-    assembleExprOp ret returnType fc (LTE CharType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmpgt x y
-    assembleExprOp ret returnType fc (EQ CharType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmpne x y
-    assembleExprOp ret returnType fc (GTE CharType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmplt x y
-    assembleExprOp ret returnType fc (GT CharType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmple x y
+    assembleExprOp returnType fc (LT CharType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmpge x y
+    assembleExprOp returnType fc (LTE CharType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmpgt x y
+    assembleExprOp returnType fc (EQ CharType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmpne x y
+    assembleExprOp returnType fc (GTE CharType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmplt x y
+    assembleExprOp returnType fc (GT CharType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmple x y
 
-    assembleExprOp ret returnType fc (LT IntType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmpge x y
-    assembleExprOp ret returnType fc (LTE IntType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmpgt x y
-    assembleExprOp ret returnType fc (EQ IntType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmpne x y
-    assembleExprOp ret returnType fc (GTE IntType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmplt x y
-    assembleExprOp ret returnType fc (GT IntType) [x, y] = assembleExprBinaryBoolOp ret returnType IInt Ificmple x y
+    assembleExprOp returnType fc (LT IntType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmpge x y
+    assembleExprOp returnType fc (LTE IntType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmpgt x y
+    assembleExprOp returnType fc (EQ IntType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmpne x y
+    assembleExprOp returnType fc (GTE IntType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmplt x y
+    assembleExprOp returnType fc (GT IntType) [x, y] = assembleExprBinaryBoolOp returnType IInt Ificmple x y
 
-    assembleExprOp ret returnType fc (LT DoubleType) [x, y] =
-        assembleExprBinaryBoolOp ret returnType IDouble (\label => do Dcmpg; Ifge label) x y
-    assembleExprOp ret returnType fc (LTE DoubleType) [x, y] =
-        assembleExprBinaryBoolOp ret returnType IDouble (\label => do Dcmpg; Ifgt label) x y
-    assembleExprOp ret returnType fc (EQ DoubleType) [x, y] =
-        assembleExprBinaryBoolOp ret returnType IDouble (\label => do Dcmpl; Ifne label) x y
-    assembleExprOp ret returnType fc (GTE DoubleType) [x, y] =
-        assembleExprBinaryBoolOp ret returnType IDouble (\label => do Dcmpl; Iflt label) x y
-    assembleExprOp ret returnType fc (GT DoubleType) [x, y] =
-        assembleExprBinaryBoolOp ret returnType IDouble (\label => do Dcmpl; Ifle label) x y
+    assembleExprOp returnType fc (LT DoubleType) [x, y] =
+        assembleExprBinaryBoolOp returnType IDouble (\label => do Dcmpg; Ifge label) x y
+    assembleExprOp returnType fc (LTE DoubleType) [x, y] =
+        assembleExprBinaryBoolOp returnType IDouble (\label => do Dcmpg; Ifgt label) x y
+    assembleExprOp returnType fc (EQ DoubleType) [x, y] =
+        assembleExprBinaryBoolOp returnType IDouble (\label => do Dcmpl; Ifne label) x y
+    assembleExprOp returnType fc (GTE DoubleType) [x, y] =
+        assembleExprBinaryBoolOp returnType IDouble (\label => do Dcmpl; Iflt label) x y
+    assembleExprOp returnType fc (GT DoubleType) [x, y] =
+        assembleExprBinaryBoolOp returnType IDouble (\label => do Dcmpl; Ifle label) x y
 
-    assembleExprOp ret returnType fc (LT IntegerType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType bigIntegerClass Ifge x y
-    assembleExprOp ret returnType fc (LTE IntegerType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType bigIntegerClass Ifgt x y
-    assembleExprOp ret returnType fc (EQ IntegerType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType bigIntegerClass Ifne x y
-    assembleExprOp ret returnType fc (GTE IntegerType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType bigIntegerClass Iflt x y
-    assembleExprOp ret returnType fc (GT IntegerType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType bigIntegerClass Ifle x y
+    assembleExprOp returnType fc (LT IntegerType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType bigIntegerClass Ifge x y
+    assembleExprOp returnType fc (LTE IntegerType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType bigIntegerClass Ifgt x y
+    assembleExprOp returnType fc (EQ IntegerType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType bigIntegerClass Ifne x y
+    assembleExprOp returnType fc (GTE IntegerType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType bigIntegerClass Iflt x y
+    assembleExprOp returnType fc (GT IntegerType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType bigIntegerClass Ifle x y
 
-    assembleExprOp ret returnType fc (LT StringType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType stringClass Ifge x y
-    assembleExprOp ret returnType fc (LTE StringType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType stringClass Ifgt x y
-    assembleExprOp ret returnType fc (EQ StringType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType stringClass Ifne x y
-    assembleExprOp ret returnType fc (GTE StringType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType stringClass Iflt x y
-    assembleExprOp ret returnType fc (GT StringType) [x, y] =
-        assembleExprComparableBinaryBoolOp ret returnType stringClass Ifle x y
+    assembleExprOp returnType fc (LT StringType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType stringClass Ifge x y
+    assembleExprOp returnType fc (LTE StringType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType stringClass Ifgt x y
+    assembleExprOp returnType fc (EQ StringType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType stringClass Ifne x y
+    assembleExprOp returnType fc (GTE StringType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType stringClass Iflt x y
+    assembleExprOp returnType fc (GT StringType) [x, y] =
+        assembleExprComparableBinaryBoolOp returnType stringClass Ifle x y
 
-    assembleExprOp ret returnType fc StrLength [x] = assembleExpr ret1 inferredStringType x where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeVirtual "java/lang/String" "length" "()I" False
-            asmCast IInt returnType
-            ret
+    assembleExprOp returnType fc StrLength [x] = do
+        assembleExpr False inferredStringType x
+        InvokeMethod InvokeVirtual "java/lang/String" "length" "()I" False
+        asmCast IInt returnType
 
-    assembleExprOp ret returnType fc StrHead [x] = assembleExpr ret1 inferredStringType x where
-        ret1 : Asm ()
-        ret1 = do
-            Iconst 0
-            InvokeMethod InvokeVirtual "java/lang/String" "charAt" "(I)C" False
-            asmCast IChar returnType
-            ret
+    assembleExprOp returnType fc StrHead [x] = do
+        assembleExpr False inferredStringType x
+        Iconst 0
+        InvokeMethod InvokeVirtual "java/lang/String" "charAt" "(I)C" False
+        asmCast IChar returnType
 
-    assembleExprOp ret returnType fc StrTail [x] = assembleExpr ret1 inferredStringType x where
-        ret1 : Asm ()
-        ret1 = do
-            Iconst 1
-            InvokeMethod InvokeVirtual "java/lang/String" "substring" "(I)Ljava/lang/String;" False
-            asmCast inferredStringType returnType
-            ret
+    assembleExprOp returnType fc StrTail [x] = do
+        assembleExpr False inferredStringType x
+        Iconst 1
+        InvokeMethod InvokeVirtual "java/lang/String" "substring" "(I)Ljava/lang/String;" False
+        asmCast inferredStringType returnType
 
-    assembleExprOp ret returnType fc StrIndex [x, i] = assembleExpr ret1 inferredStringType x where
-        ret2 : Asm ()
-        ret2 = do
-            InvokeMethod InvokeVirtual "java/lang/String" "charAt" "(I)C" False
-            asmCast IChar returnType
-            ret
+    assembleExprOp returnType fc StrIndex [x, i] = do
+        assembleExpr False inferredStringType x
+        assembleExpr False IInt i
+        InvokeMethod InvokeVirtual "java/lang/String" "charAt" "(I)C" False
+        asmCast IChar returnType
 
-        ret1 : Asm ()
-        ret1 = assembleExpr ret2 IInt i
+    assembleExprOp returnType fc StrCons [x, y] = assembleStrCons returnType x y
 
-    assembleExprOp ret returnType fc StrCons [x, y] = do assembleStrCons returnType x y; ret
-    assembleExprOp ret returnType fc StrAppend [x, y] =
+    assembleExprOp returnType fc StrAppend [x, y] =
         let op = InvokeMethod InvokeVirtual "java/lang/String" "concat" "(Ljava/lang/String;)Ljava/lang/String;" False
-        in assembleExprBinaryOp ret returnType inferredStringType op x y
-    assembleExprOp ret returnType fc StrReverse [x] = do assembleStrReverse returnType x; ret
-    assembleExprOp ret returnType fc StrSubstr [offset, len, str] = assembleExpr ret1 IInt offset where
-        ret3 : Asm ()
-        ret3 = do
-            InvokeMethod InvokeStatic (getRuntimeClass "Strings") "substring"
-                "(IILjava/lang/String;)Ljava/lang/String;" False
-            asmCast inferredStringType returnType
-            ret
+        in assembleExprBinaryOp returnType inferredStringType op x y
 
-        ret2 : Asm ()
-        ret2 = assembleExpr ret3 inferredStringType str
+    assembleExprOp returnType fc StrReverse [x] = assembleStrReverse returnType x
 
-        ret1 : Asm ()
-        ret1 = assembleExpr ret2 IInt len
+    assembleExprOp returnType fc StrSubstr [offset, len, str] =do
+        assembleExpr False IInt offset
+        assembleExpr False IInt len
+        assembleExpr False inferredStringType str
+        InvokeMethod InvokeStatic (getRuntimeClass "Strings") "substring"
+            "(IILjava/lang/String;)Ljava/lang/String;" False
+        asmCast inferredStringType returnType
 
-    {-assembleExprOp ret returnType fc  is Euler's number, which approximates to: 2.718281828459045
-    assembleExprOp ret returnType fc DoubleExp [x] = op "exp" [x] -- Base is `e`. Same as: `pow(e, x)`
-    assembleExprOp ret returnType fc DoubleLog [x] = op "log" [x] -- Base is `e`.
-    assembleExprOp ret returnType fc DoubleSin [x] = op "sin" [x]
-    assembleExprOp ret returnType fc DoubleCos [x] = op "cos" [x]
-    assembleExprOp ret returnType fc DoubleTan [x] = op "tan" [x]
-    assembleExprOp ret returnType fc DoubleASin [x] = op "asin" [x]
-    assembleExprOp ret returnType fc DoubleACos [x] = op "acos" [x]
-    assembleExprOp ret returnType fc DoubleATan [x] = op "atan" [x]
-    assembleExprOp ret returnType fc DoubleSqrt [x] = op "sqrt" [x]
-    assembleExprOp ret returnType fc DoubleFloor [x] = op "floor" [x]
-    assembleExprOp ret returnType fc DoubleCeiling [x] = op "ceiling" [x]-}
+    {-assembleExprOp returnType fc  is Euler's number, which approximates to: 2.718281828459045
+    assembleExprOp returnType fc DoubleExp [x] = op "exp" [x] -- Base is `e`. Same as: `pow(e, x)`
+    assembleExprOp returnType fc DoubleLog [x] = op "log" [x] -- Base is `e`.
+    assembleExprOp returnType fc DoubleSin [x] = op "sin" [x]
+    assembleExprOp returnType fc DoubleCos [x] = op "cos" [x]
+    assembleExprOp returnType fc DoubleTan [x] = op "tan" [x]
+    assembleExprOp returnType fc DoubleASin [x] = op "asin" [x]
+    assembleExprOp returnType fc DoubleACos [x] = op "acos" [x]
+    assembleExprOp returnType fc DoubleATan [x] = op "atan" [x]
+    assembleExprOp returnType fc DoubleSqrt [x] = op "sqrt" [x]
+    assembleExprOp returnType fc DoubleFloor [x] = op "floor" [x]
+    assembleExprOp returnType fc DoubleCeiling [x] = op "ceiling" [x]-}
 
-    assembleExprOp ret returnType fc (Cast IntType StringType) [x] = assembleExpr ret1 IInt x where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeStatic "java/lang/Integer" "toString" "(I)Ljava/lang/String;" False
-            asmCast inferredStringType returnType
-            ret
+    assembleExprOp returnType fc (Cast IntType StringType) [x] = do
+        assembleExpr False IInt x
+        InvokeMethod InvokeStatic "java/lang/Integer" "toString" "(I)Ljava/lang/String;" False
+        asmCast inferredStringType returnType
 
-    assembleExprOp ret returnType fc (Cast IntegerType StringType) [x] =
-        assembleExpr ret1 inferredBigIntegerType x where
-            ret1 : Asm ()
-            ret1 = do
-                InvokeMethod InvokeVirtual "java/math/BigInteger" "toString" "()Ljava/lang/String;" False
-                asmCast inferredBigIntegerType returnType
-                ret
+    assembleExprOp returnType fc (Cast IntegerType StringType) [x] = do
+        assembleExpr False inferredBigIntegerType x
+        InvokeMethod InvokeVirtual "java/math/BigInteger" "toString" "()Ljava/lang/String;" False
+        asmCast inferredBigIntegerType returnType
 
-    assembleExprOp ret returnType fc (Cast DoubleType StringType) [x] = assembleExpr ret1 IDouble x where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeStatic "java/lang/Double" "toString" "(D)Ljava/lang/String;" False
-            asmCast inferredStringType returnType
-            ret
+    assembleExprOp returnType fc (Cast DoubleType StringType) [x] = do
+        assembleExpr False IDouble x
+        InvokeMethod InvokeStatic "java/lang/Double" "toString" "(D)Ljava/lang/String;" False
+        asmCast inferredStringType returnType
 
-    assembleExprOp ret returnType fc (Cast CharType StringType) [x] = assembleExpr ret1 IChar x where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeStatic "java/lang/Character" "toString" "(I)Ljava/lang/String;" False
-            asmCast inferredStringType returnType
-            ret
+    assembleExprOp returnType fc (Cast CharType StringType) [x] = do
+        assembleExpr False IChar x
+        InvokeMethod InvokeStatic "java/lang/Character" "toString" "(I)Ljava/lang/String;" False
+        asmCast inferredStringType returnType
 
-    assembleExprOp ret returnType fc (Cast IntType IntegerType) [x] = assembleExpr ret1 IInt x where
-        ret1 : Asm ()
-        ret1 = do
-            I2l
-            InvokeMethod InvokeStatic "java/math/BigInteger" "valueOf" "(J)Ljava/math/BigInteger;" False
-            asmCast inferredBigIntegerType returnType
-            ret
+    assembleExprOp returnType fc (Cast IntType IntegerType) [x] = do
+        assembleExpr False IInt x
+        I2l
+        InvokeMethod InvokeStatic "java/math/BigInteger" "valueOf" "(J)Ljava/math/BigInteger;" False
+        asmCast inferredBigIntegerType returnType
 
-    assembleExprOp ret returnType fc (Cast DoubleType IntegerType) [x] = assembleExpr ret1 IDouble x where
-        ret1 : Asm ()
-        ret1 = do
-            D2i
-            I2l
-            InvokeMethod InvokeStatic "java/math/BigInteger" "valueOf" "(J)Ljava/math/BigInteger;" False
-            asmCast inferredBigIntegerType returnType
-            ret
+    assembleExprOp returnType fc (Cast DoubleType IntegerType) [x] = do
+        assembleExpr False IDouble x
+        D2i
+        I2l
+        InvokeMethod InvokeStatic "java/math/BigInteger" "valueOf" "(J)Ljava/math/BigInteger;" False
+        asmCast inferredBigIntegerType returnType
 
-    assembleExprOp ret returnType fc (Cast CharType IntegerType) [x] = assembleExpr ret1 IInt x where
-        ret1 : Asm ()
-        ret1 = do
-            I2l
-            InvokeMethod InvokeStatic "java/math/BigInteger" "valueOf" "(J)Ljava/math/BigInteger;" False
-            asmCast inferredBigIntegerType returnType
-            ret
-    assembleExprOp ret returnType fc (Cast StringType IntegerType) [x] = do
+    assembleExprOp returnType fc (Cast CharType IntegerType) [x] = do
+        assembleExpr False IInt x
+        I2l
+        InvokeMethod InvokeStatic "java/math/BigInteger" "valueOf" "(J)Ljava/math/BigInteger;" False
+        asmCast inferredBigIntegerType returnType
+
+    assembleExprOp returnType fc (Cast StringType IntegerType) [x] = do
         New "java/math/BigInteger"
         Dup
-        assembleExpr ret1 inferredStringType x
-      where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeSpecial "java/math/BigDecimal" "<init>" "(Ljava/lang/String;)V" False
-            InvokeMethod InvokeVirtual "java/math/BigInteger" "toBigInteger" "()Ljava/math/BigInteger;" False
-            asmCast inferredBigIntegerType returnType
-            ret
+        assembleExpr False inferredStringType x
+        InvokeMethod InvokeSpecial "java/math/BigDecimal" "<init>" "(Ljava/lang/String;)V" False
+        InvokeMethod InvokeVirtual "java/math/BigInteger" "toBigInteger" "()Ljava/math/BigInteger;" False
+        asmCast inferredBigIntegerType returnType
 
-    assembleExprOp ret returnType fc (Cast IntegerType IntType) [x] = assembleExpr ret1 inferredBigIntegerType x where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeVirtual "java/math/BigInteger" "intValue" "()I" False
-            asmCast IInt returnType
-            ret
+    assembleExprOp returnType fc (Cast IntegerType IntType) [x] = do
+        assembleExpr False inferredBigIntegerType x
+        InvokeMethod InvokeVirtual "java/math/BigInteger" "intValue" "()I" False
+        asmCast IInt returnType
 
-    assembleExprOp ret returnType fc (Cast DoubleType IntType) [x] = assembleExpr ret1 IDouble x where
-        ret1 : Asm ()
-        ret1 = do
-            D2i
-            asmCast IInt returnType
-            ret
+    assembleExprOp returnType fc (Cast DoubleType IntType) [x] = do
+        assembleExpr False IDouble x
+        D2i
+        asmCast IInt returnType
 
-    assembleExprOp ret returnType fc (Cast StringType IntType) [x] = assembleExpr ret1 inferredStringType x where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeStatic "java/lang/Double" "parseDouble" "(Ljava/lang/String;)D" False
-            D2i
-            asmCast IInt returnType
-            ret
+    assembleExprOp returnType fc (Cast StringType IntType) [x] = do
+        assembleExpr False inferredStringType x
+        InvokeMethod InvokeStatic "java/lang/Double" "parseDouble" "(Ljava/lang/String;)D" False
+        D2i
+        asmCast IInt returnType
 
-    assembleExprOp ret returnType fc (Cast CharType IntType) [x] =
-        assembleExpr (do asmCast IInt returnType; ret) IChar x
+    assembleExprOp returnType fc (Cast CharType IntType) [x] = do
+        assembleExpr False IChar x
+        asmCast IInt returnType
 
-    assembleExprOp ret returnType fc (Cast IntegerType DoubleType) [x] =
-        assembleExpr ret1 inferredBigIntegerType x where
-            ret1 : Asm ()
-            ret1 = do
-                InvokeMethod InvokeVirtual "java/math/BigInteger" "doubleValue" "()D" False
-                asmCast IDouble returnType
-                ret
+    assembleExprOp returnType fc (Cast IntegerType DoubleType) [x] = do
+        assembleExpr False inferredBigIntegerType x
+        InvokeMethod InvokeVirtual "java/math/BigInteger" "doubleValue" "()D" False
+        asmCast IDouble returnType
 
-    assembleExprOp ret returnType fc (Cast IntType DoubleType) [x] = assembleExpr ret1 IInt x where
-        ret1 : Asm ()
-        ret1 = do
-            I2d
-            asmCast IDouble returnType
-            ret
-    assembleExprOp ret returnType fc (Cast StringType DoubleType) [x] = assembleExpr ret1 inferredStringType x where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeStatic "java/lang/Double" "parseDouble" "(Ljava/lang/String;)D" False
-            asmCast IDouble returnType
-            ret
+    assembleExprOp returnType fc (Cast IntType DoubleType) [x] = do
+        assembleExpr False IInt x
+        I2d
+        asmCast IDouble returnType
 
-    assembleExprOp ret returnType fc (Cast IntType CharType) [x] = assembleExpr ret1 IInt x where
-        ret1 : Asm ()
-        ret1 = do
-            I2c
-            asmCast IChar returnType
-            ret
+    assembleExprOp returnType fc (Cast StringType DoubleType) [x] = do
+        assembleExpr False inferredStringType x
+        InvokeMethod InvokeStatic "java/lang/Double" "parseDouble" "(Ljava/lang/String;)D" False
+        asmCast IDouble returnType
 
-    assembleExprOp ret returnType fc BelieveMe [_,_,x] = assembleExpr (do asmCast IUnknown returnType; ret) IUnknown x
+    assembleExprOp returnType fc (Cast IntType CharType) [x] = do
+        assembleExpr False IInt x
+        I2c
+        asmCast IChar returnType
 
-    assembleExprOp ret returnType fc Crash [_, msg] =  assembleExpr ret1 inferredStringType msg where
-        ret1 : Asm ()
-        ret1 = do
-            InvokeMethod InvokeStatic runtimeClass "crash" "(Ljava/lang/String;)Ljava/lang/Object;" False
-            asmCast inferredObjectType returnType
-            ret
+    assembleExprOp returnType fc BelieveMe [_,_,x] = do
+        assembleExpr False IUnknown x
+        asmCast IUnknown returnType
 
-    assembleExprOp ret returnType fc op _ = Throw fc ("Unsupported operator " ++ show op)
+    assembleExprOp returnType fc Crash [_, msg] = do
+        assembleExpr False inferredStringType msg
+        InvokeMethod InvokeStatic runtimeClass "crash" "(Ljava/lang/String;)Ljava/lang/Object;" False
+        asmCast inferredObjectType returnType
+
+    assembleExprOp returnType fc op _ = Throw fc ("Unsupported operator " ++ show op)
 
     assembleParameter : (NamedCExp, InferredType) -> Asm ()
-    assembleParameter (param, ty) = assembleExpr (Pure ()) ty param
+    assembleParameter (param, ty) = assembleExpr False ty param
 
     storeParameter : (Nat, NamedCExp, InferredType) -> Asm ()
     storeParameter (var, (NmLocal _ loc), ty) = do
@@ -718,40 +666,34 @@ mutual
             valueVariableType <- getVariableType valueVariableName
             loadVar !getVariableTypes valueVariableType ty valueVariableIndex
             storeVar ty ty var
-    storeParameter (var, param, ty) = assembleExpr (storeVar ty ty var) ty param
+    storeParameter (var, param, ty) = do
+        assembleExpr False ty param
+        storeVar ty ty var
 
-    substituteVariableSubMethodBody : NamedCExp -> NamedCExp -> NamedCExp
-    substituteVariableSubMethodBody variable (NmConCase fc sc alts def) = NmConCase fc variable alts def
-    substituteVariableSubMethodBody variable (NmConstCase fc sc alts def) = NmConstCase fc variable alts def
-    substituteVariableSubMethodBody _ expr = expr
-
-    assembleSubMethodWithScope : Asm () -> InferredType -> (parameterValue: Maybe NamedCExp) ->
+    assembleSubMethodWithScope : (isTailCall: Bool) -> InferredType -> (parameterValue: Maybe NamedCExp) ->
         (parameterName : Maybe Name) -> NamedCExp -> Asm ()
-    assembleSubMethodWithScope ret returnType (Just value) (Just name) body = do
+    assembleSubMethodWithScope isTailCall returnType (Just value) (Just name) body = do
         parentScope <- getScope !getCurrentScopeIndex
         parameterValueVariableIndex <- newDynamicVariableIndex
         let parameterValueVariable = jvmSimpleName name ++ show parameterValueVariableIndex
-        withScope $ assembleSubMethod returnType (Just (assembleValue parentScope parameterValueVariable))
+        withScope $ assembleSubMethod isTailCall returnType (Just (assembleValue parentScope parameterValueVariable))
             (Just $ UN parameterValueVariable) parentScope
             (substituteVariableSubMethodBody (NmLocal (getFC body) $ UN parameterValueVariable) body)
-        ret
       where
           assembleValue : Scope -> String -> Asm ()
           assembleValue enclosingScope variableName = do
             lambdaScopeIndex <- getCurrentScopeIndex
-            variableType <- getVariableType variableName
             updateCurrentScopeIndex (index enclosingScope)
-            assembleExpr (Pure ()) variableType value
+            assembleExpr False !(getVariableType variableName) value
             updateCurrentScopeIndex lambdaScopeIndex
 
-    assembleSubMethodWithScope ret returnType _ parameterName body = do
+    assembleSubMethodWithScope isTailCall returnType _ parameterName body = do
         parentScope <- getScope !getCurrentScopeIndex
-        withScope $ assembleSubMethod returnType Nothing parameterName parentScope body
-        ret
+        withScope $ assembleSubMethod isTailCall returnType Nothing parameterName parentScope body
 
-    assembleSubMethod : InferredType -> (parameterValueExpr: (Maybe (Asm ()))) ->
+    assembleSubMethod : (isTailCall: Bool) -> InferredType -> (parameterValueExpr: (Maybe (Asm ()))) ->
         (parameterName: Maybe Name) -> Scope -> NamedCExp -> Asm ()
-    assembleSubMethod lambdaReturnType parameterValueExpr parameterName declaringScope expr = do
+    assembleSubMethod isTailCall lambdaReturnType parameterValueExpr parameterName declaringScope expr = do
             scope <- getScope !getCurrentScopeIndex
             maybe (Pure ()) (setScopeCounter . succ) (parentIndex scope)
             let lambdaBodyReturnType = returnType scope
@@ -780,7 +722,9 @@ mutual
                  InvokeMethod InvokeStatic className lambdaMethodName implementationMethodDescriptor False
                  asmCast lambdaBodyReturnType lambdaReturnType
             maybe indy (const staticCall) parameterValueExpr
-
+            when isTailCall $
+                if isExtracted then asmReturn implementationMethodReturnType
+                else asmReturn lambdaInterfaceType
             let oldLineNumberLabels = lineNumberLabels !GetState
             updateState $ record { lineNumberLabels = SortedMap.empty }
             let accessModifiers = if isExtracted then [Private, Static]
@@ -792,9 +736,8 @@ mutual
             let labelEnd = methodEndLabel
             addLambdaStartLabel scope labelStart
             maybe (Pure ()) (\parentScopeIndex => updateScopeStartLabel parentScopeIndex labelStart) (parentIndex scope)
-            let ret = if isExtracted then asmReturn lambdaBodyReturnType else castReturn lambdaType lambdaBodyReturnType
-            when isExtracted $ Debug $ "extracted expr " ++ showNamedCExp 0 expr
-            assembleExpr ret lambdaBodyReturnType expr
+            let lambdaReturnType = if lambdaType == ThunkLambda then thunkType else inferredObjectType
+            assembleExpr True lambdaReturnType expr
             addLambdaEndLabel scope labelEnd
             maybe (Pure ()) (\parentScopeIndex => updateScopeEndLabel parentScopeIndex labelEnd) (parentIndex scope)
             addLocalVariables $ fromMaybe (index scope) (parentIndex scope)
@@ -820,14 +763,6 @@ mutual
                 CreateLabel label
                 LabelStart label
                 updateScopeEndLabel scopeIndex label
-
-            castReturn : LambdaType -> InferredType -> Asm ()
-            castReturn ThunkLambda returnType =
-                if isThunkType returnType then asmReturn returnType
-                else do
-                    asmCast returnType thunkType
-                    asmReturn thunkType
-            castReturn _ returnType = do asmCast returnType inferredObjectType; asmReturn inferredObjectType
 
             loadVariables : SortedMap Nat InferredType -> SortedMap Nat (InferredType, InferredType) -> List Nat -> Asm ()
             loadVariables _ _ [] = Pure ()
@@ -864,17 +799,27 @@ mutual
                         sourceType <- getVariableTypeAtScope (index declaringScope) name
                         getIndexAndType (SortedMap.insert varIndex (sourceType, targetType) acc) rest
 
-    assembleMissingDefault : Asm () -> InferredType -> FC -> String -> Asm ()
-    assembleMissingDefault ret returnType fc defaultLabel = do
+    assembleMissingDefault :InferredType -> FC -> String -> Asm ()
+    assembleMissingDefault returnType fc defaultLabel = do
         LabelStart defaultLabel
-        assembleExpr ret returnType (NmCrash fc "Unreachable code")
+        assembleExpr True returnType (NmCrash fc "Unreachable code")
 
-    assembleConstantSwitch : Asm () -> (returnType: InferredType) -> (switchExprType: InferredType) -> FC ->
+    assembleConstantSwitch : (returnType: InferredType) -> (switchExprType: InferredType) -> FC ->
         NamedCExp -> List NamedConstAlt -> Maybe NamedCExp -> Asm ()
-    assembleConstantSwitch _ _ _ fc _ [] _ = Throw fc "Empty cases"
+    assembleConstantSwitch _ _ fc _ [] _ = Throw fc "Empty cases"
 
-    assembleConstantSwitch ret returnType IInt fc sc alts def = assembleExpr ret1 IInt sc where
-
+    assembleConstantSwitch returnType IInt fc sc alts def = do
+        assembleExpr False IInt sc
+        switchCases <- getCasesWithLabels alts
+        let labels = fst <$> switchCases
+        let exprs = second <$> switchCases
+        traverse_ CreateLabel labels
+        defaultLabel <- createDefaultLabel
+        LookupSwitch defaultLabel labels exprs
+        let switchCasesWithEndLabel = getSwitchCasesWithEndLabel switchCases labels
+        traverse_ assembleExprConstAlt switchCasesWithEndLabel
+        maybe (assembleMissingDefault returnType fc defaultLabel) (assembleDefault defaultLabel) def
+      where
         getCasesWithLabels : List NamedConstAlt -> Asm (List (String, Int, NamedConstAlt))
         getCasesWithLabels alts = do
             caseExpressionsWithLabels <- traverse (constantAltIntExpr fc) alts
@@ -889,7 +834,7 @@ mutual
             updateScopeStartLabel scopeIndex labelStart
             addLineNumber lineNumberStart labelStart
             updateScopeEndLabel scopeIndex labelEnd
-            assembleExpr ret returnType expr
+            assembleExpr True returnType expr
 
         assembleDefault : String -> NamedCExp -> Asm ()
         assembleDefault defaultLabel expr =  assembleCaseWithScope defaultLabel methodEndLabel expr
@@ -898,19 +843,7 @@ mutual
         assembleExprConstAlt (labelStart, _, (MkNConstAlt _ expr), labelEnd) =
             assembleCaseWithScope labelStart labelEnd expr
 
-        ret1 : Asm ()
-        ret1 = do
-            switchCases <- getCasesWithLabels alts
-            let labels = fst <$> switchCases
-            let exprs = second <$> switchCases
-            traverse_ CreateLabel labels
-            defaultLabel <- createDefaultLabel
-            LookupSwitch defaultLabel labels exprs
-            let switchCasesWithEndLabel = getSwitchCasesWithEndLabel switchCases labels
-            traverse_ assembleExprConstAlt switchCasesWithEndLabel
-            maybe (assembleMissingDefault ret returnType fc defaultLabel) (assembleDefault defaultLabel) def
-
-    assembleConstantSwitch ret returnType constantType fc sc alts def = do
+    assembleConstantSwitch returnType constantType fc sc alts def = do
             constantExprVariableSuffixIndex <- newDynamicVariableIndex
             let constantExprVariableName = "constantCaseExpr" ++ show constantExprVariableSuffixIndex
             constantExprVariableIndex <- getVariableIndex constantExprVariableName
@@ -925,7 +858,8 @@ mutual
             switchEndLabel <- newLabel
             CreateLabel switchEndLabel
             traverse_ CreateLabel labels
-            assembleExpr (storeVar constantType constantType constantExprVariableIndex) constantType sc
+            assembleExpr False constantType sc
+            storeVar constantType constantType constantExprVariableIndex
             constantClass <- getHashCodeSwitchClass fc constantType
             Iconst (-1)
             storeVar IInt IInt hashCodePositionVariableIndex
@@ -940,7 +874,7 @@ mutual
             let lineNumberStart = fst $ lineNumbers scope
             LabelStart switchEndLabel
             addLineNumber lineNumberStart switchEndLabel
-            assembleConstantSwitch ret returnType IInt fc (NmLocal fc $ UN hashCodePositionVariableName)
+            assembleConstantSwitch returnType IInt fc (NmLocal fc $ UN hashCodePositionVariableName)
                 (hashPositionSwitchAlts hashPositionAndAlts) def
         where
             constantAltHashCodeExpr : FC -> (Nat, NamedConstAlt) -> Asm (Int, Nat, NamedConstAlt)
@@ -994,10 +928,10 @@ mutual
                         storeVar IInt IInt hashCodePositionVariableIndex
                         Goto switchEndLabel
 
-    assembleConCaseExpr : Asm () -> InferredType -> Nat -> Name -> List Name -> NamedCExp -> Asm ()
-    assembleConCaseExpr ret returnType idrisObjectVariableIndex name args expr = do
+    assembleConCaseExpr : InferredType -> Nat -> Name -> List Name -> NamedCExp -> Asm ()
+    assembleConCaseExpr returnType idrisObjectVariableIndex name args expr = do
             bindArg 0 args
-            assembleExpr ret returnType expr
+            assembleExpr True returnType expr
         where
             constructorType : InferredType
             constructorType = IRef $ jvmSimpleName name
@@ -1014,9 +948,8 @@ mutual
                     storeVar inferredObjectType !(getVariableType variableName) variableIndex
                 bindArg (index + 1) vars
 
-    assembleConstructorSwitch : Asm () -> InferredType -> FC -> Nat -> List NamedConAlt ->
-        Maybe NamedCExp -> Asm ()
-    assembleConstructorSwitch ret returnType fc idrisObjectVariableIndex alts def = do
+    assembleConstructorSwitch : InferredType -> FC -> Nat -> List NamedConAlt -> Maybe NamedCExp -> Asm ()
+    assembleConstructorSwitch returnType fc idrisObjectVariableIndex alts def = do
             switchCases <- getCasesWithLabels alts
             let labels = fst <$> switchCases
             let switchCasesWithEndLabel = getSwitchCasesWithEndLabel switchCases labels
@@ -1025,7 +958,7 @@ mutual
             defaultLabel <- createDefaultLabel
             LookupSwitch defaultLabel labels exprs
             traverse_ assembleExprConAlt switchCasesWithEndLabel
-            maybe (assembleMissingDefault ret returnType fc defaultLabel) (assembleDefault defaultLabel) def
+            maybe (assembleMissingDefault returnType fc defaultLabel) (assembleDefault defaultLabel) def
         where
             caseExpression : (String, Int, NamedConAlt) -> Int
             caseExpression (_, expr, _) = expr
@@ -1044,7 +977,7 @@ mutual
                 addLineNumber lineNumberStart labelStart
                 updateScopeStartLabel scopeIndex labelStart
                 updateScopeEndLabel scopeIndex methodEndLabel
-                assembleExpr ret returnType expr
+                assembleExpr True returnType expr
 
             assembleCaseWithScope : String -> String -> Name -> List Name -> NamedCExp -> Asm ()
             assembleCaseWithScope labelStart labelEnd name args expr = withScope $ do
@@ -1055,15 +988,15 @@ mutual
                 addLineNumber lineNumberStart labelStart
                 updateScopeStartLabel scopeIndex labelStart
                 updateScopeEndLabel scopeIndex labelEnd
-                assembleConCaseExpr ret returnType idrisObjectVariableIndex name args expr
+                assembleConCaseExpr returnType idrisObjectVariableIndex name args expr
 
             assembleExprConAlt : (String, Int, NamedConAlt, String) -> Asm ()
             assembleExprConAlt (labelStart, _, (MkNConAlt name tag args expr), labelEnd) =
                 assembleCaseWithScope labelStart labelEnd name args expr
 
-        assembleStringConstructorSwitch : Asm () -> InferredType -> FC -> Nat -> List NamedConAlt ->
-                Maybe NamedCExp -> Asm ()
-        assembleStringConstructorSwitch ret returnType fc idrisObjectVariableIndex alts def = do
+        assembleStringConstructorSwitch : InferredType -> FC -> Nat -> List NamedConAlt ->
+            Maybe NamedCExp -> Asm ()
+        assembleStringConstructorSwitch returnType fc idrisObjectVariableIndex alts def = do
             constantExprVariableSuffixIndex <- newDynamicVariableIndex
             let constantExprVariableName = "constructorCaseExpr" ++ show constantExprVariableSuffixIndex
             constantExprVariableIndex <- getVariableIndex constantExprVariableName
@@ -1094,8 +1027,8 @@ mutual
             let lineNumberStart = fst $ lineNumbers scope
             LabelStart switchEndLabel
             addLineNumber lineNumberStart switchEndLabel
-            assembleExpr (Pure ()) IInt (NmLocal fc $ UN hashCodePositionVariableName)
-            assembleConstructorSwitch ret returnType fc idrisObjectVariableIndex
+            assembleExpr False IInt (NmLocal fc $ UN hashCodePositionVariableName)
+            assembleConstructorSwitch returnType fc idrisObjectVariableIndex
                 (hashPositionSwitchAlts hashPositionAndAlts) def
         where
             conAltHashCodeExpr : FC -> (Nat, NamedConAlt) -> Asm (Int, Nat, NamedConAlt)
@@ -1149,8 +1082,8 @@ mutual
                         storeVar IInt IInt hashCodePositionVariableIndex
                         Goto switchEndLabel
 
-    jvmExtPrim : Asm () -> InferredType -> ExtPrim -> List NamedCExp -> Asm ()
-    jvmExtPrim returns returnType JvmStaticMethodCall [ret, NmPrimVal fc (Str fn), fargs, world] = do
+    jvmExtPrim : InferredType -> ExtPrim -> List NamedCExp -> Asm ()
+    jvmExtPrim returnType JvmStaticMethodCall [ret, NmPrimVal fc (Str fn), fargs, world] = do
         args <- getFArgs fargs
         argTypes <- traverse tySpec (map fst args)
         methodReturnType <- tySpec ret
@@ -1160,37 +1093,23 @@ mutual
         let (_, mname) = break (/= '.') mnameWithDot
         InvokeMethod InvokeStatic cname mname methodDescriptor False
         asmCast methodReturnType returnType
-        returns
-    jvmExtPrim ret returnType NewArray [_, size, val, world] = assembleExpr ret1 IInt size where
-        ret2 : Asm ()
-        ret2 = do
-            InvokeMethod InvokeStatic arraysClass "create" "(ILjava/lang/Object;)Ljava/util/ArrayList;" False
-            asmCast arrayListType returnType
-            ret
-
-        ret1 : Asm ()
-        ret1 = assembleExpr ret2 IUnknown val
-    jvmExtPrim ret returnType ArrayGet [_, arr, pos, world] = assembleExpr ret1 arrayListType arr where
-        ret2 : Asm ()
-        ret2 = do
-            InvokeMethod InvokeVirtual arrayListClass "get" "(I)Ljava/lang/Object;" False
-            asmCast inferredObjectType returnType
-            ret
-
-        ret1 : Asm ()
-        ret1 = assembleExpr ret2 IInt pos
-    jvmExtPrim ret returnType ArraySet [_, arr, pos, val, world] = assembleExpr ret1 arrayListType arr where
-        ret3 : Asm ()
-        ret3 = do
-            InvokeMethod InvokeVirtual arrayListClass "set" "(ILjava/lang/Object;)Ljava/lang/Object;" False
-            ret
-
-        ret2 : Asm ()
-        ret2 = assembleExpr ret3 IUnknown val
-
-        ret1 : Asm ()
-        ret1 = assembleExpr ret2 IInt pos
-    jvmExtPrim _ _ prim args = Throw emptyFC ("Unsupported external function " ++ show prim)
+    jvmExtPrim returnType NewArray [_, size, val, world] = do
+        assembleExpr False IInt size
+        assembleExpr False IUnknown val
+        InvokeMethod InvokeStatic arraysClass "create" "(ILjava/lang/Object;)Ljava/util/ArrayList;" False
+        asmCast arrayListType returnType
+    jvmExtPrim returnType ArrayGet [_, arr, pos, world] = do
+        assembleExpr False arrayListType arr
+        assembleExpr False IInt pos
+        InvokeMethod InvokeVirtual arrayListClass "get" "(I)Ljava/lang/Object;" False
+        asmCast inferredObjectType returnType
+    jvmExtPrim returnType ArraySet [_, arr, pos, val, world] = do
+        assembleExpr False arrayListType arr
+        assembleExpr False IInt pos
+        assembleExpr False IUnknown val
+        InvokeMethod InvokeVirtual arrayListClass "set" "(ILjava/lang/Object;)Ljava/lang/Object;" False
+        asmCast inferredObjectType returnType
+    jvmExtPrim _ prim args = Throw emptyFC ("Unsupported external function " ++ show prim)
 
 assembleDefinition : {auto c : Ref Ctxt Defs} -> Name -> FC -> NamedDef -> Asm ()
 assembleDefinition idrisName fc def@(MkNmFun args expr) = do
@@ -1213,8 +1132,7 @@ assembleDefinition idrisName fc def@(MkNmFun args expr) = do
         lineNumberLabels = SortedMap.empty }
     updateCurrentFunction $ record { dynamicVariableCounter = 0 }
     let optimizedExpr = optimizedBody function
-    Debug $ "************* " ++ show jname ++ ", " ++ show idrisName ++ "(" ++ show args ++ ")" ++ "*******"
-    Debug $ showNamedCExp 0 optimizedExpr
+    traverse (Debug . show) $ SortedMap.values $ scopes function
     CreateMethod [Public, Static] fileName declaringClassName methodName descriptor Nothing Nothing [] []
     MethodCodeStart
     CreateLabel methodStartLabel
@@ -1227,7 +1145,7 @@ assembleDefinition idrisName fc def@(MkNmFun args expr) = do
         addLineNumber lineNumberStart methodStartLabel
         updateScopeStartLabel scopeIndex methodStartLabel
         updateScopeEndLabel scopeIndex methodEndLabel
-        assembleExpr (asmReturn methodReturnType) methodReturnType optimizedExpr
+        assembleExpr True methodReturnType optimizedExpr
         LabelStart methodEndLabel
     addLocalVariables 0
     MaxStackAndLocal (-1) (-1)
