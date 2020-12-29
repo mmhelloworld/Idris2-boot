@@ -574,6 +574,16 @@ mutual
         inferExpr IInt pos
         inferExpr IUnknown val
         pure inferredObjectType
+    inferExtPrim returnType NewIORef [_, val, world] = do
+        inferExpr IUnknown val
+        pure refType
+    inferExtPrim returnType ReadIORef [_, ref, world] = do
+        inferExpr refType ref
+        pure IUnknown
+    inferExtPrim returnType WriteIORef [_, ref, val, world] = do
+        inferExpr refType ref
+        inferExpr IUnknown val
+        pure inferredObjectType
     inferExtPrim _ prim args = Throw emptyFC ("Unsupported external function " ++ show prim)
 
     inferExprLamWithParameterType : Maybe (Name, InferredType) -> (parameterValueExpr: Maybe (Asm ())) ->

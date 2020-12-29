@@ -102,6 +102,12 @@ idrisObjectClass = getRuntimeClass "IdrisObject"
 arraysClass : String
 arraysClass = getRuntimeClass "Arrays"
 
+refClass : String
+refClass = getRuntimeClass "Ref"
+
+refType : InferredType
+refType = IRef refClass
+
 idrisObjectType : InferredType
 idrisObjectType = IRef idrisObjectClass
 

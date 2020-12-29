@@ -1109,6 +1109,22 @@ mutual
         assembleExpr False IUnknown val
         InvokeMethod InvokeVirtual arrayListClass "set" "(ILjava/lang/Object;)Ljava/lang/Object;" False
         asmCast inferredObjectType returnType
+    jvmExtPrim returnType NewIORef [_, val, world] = do
+        New refClass
+        Dup
+        assembleExpr False IUnknown val
+        InvokeMethod InvokeSpecial refClass "<init>" "(Ljava/lang/Object;)V" False
+        asmCast refType returnType
+    jvmExtPrim returnType ReadIORef [_, ref, world] = do
+        assembleExpr False refType ref
+        InvokeMethod InvokeVirtual refClass "getValue" "()Ljava/lang/Object;" False
+        asmCast inferredObjectType returnType
+    jvmExtPrim returnType WriteIORef [_, ref, val, world] = do
+        assembleExpr False refType ref
+        assembleExpr False IUnknown val
+        InvokeMethod InvokeVirtual refClass "setValue" "(Ljava/lang/Object;)V" False
+        Aconstnull
+        asmCast inferredObjectType returnType
     jvmExtPrim _ prim args = Throw emptyFC ("Unsupported external function " ++ show prim)
 
 assembleDefinition : {auto c : Ref Ctxt Defs} -> Name -> FC -> NamedDef -> Asm ()
