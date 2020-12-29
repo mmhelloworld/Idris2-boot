@@ -6,6 +6,7 @@ import Idris.Version
 import YafflePaths
 import IdrisJvm.IO
 import IdrisJvm.System
+import Java.Lang
 
 %default total
 
@@ -185,8 +186,16 @@ optUsage d
     showSep sep (x :: xs) = x ++ sep ++ showSep sep xs
 
 export
+jvmInfo : String
+jvmInfo = getJvmProperty "java.vm.vendor" ++ " " ++ getJvmProperty "java.vm.name" ++ ", " ++
+    getJvmProperty "java.version"
+  where
+    getJvmProperty : String -> String
+    getJvmProperty name = unsafePerformIO $ System.getPropertyWithDefault name ""
+
+export
 versionMsg : String
-versionMsg = "Idris 2, version " ++ showVersion True version
+versionMsg = "Idris 2, version " ++ showVersion True version ++ " (" ++ jvmInfo ++ ")"
 
 export
 usage : String

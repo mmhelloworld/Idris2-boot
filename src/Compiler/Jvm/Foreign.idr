@@ -153,7 +153,7 @@ inferForeign idrisName fc foreignDescriptors argumentTypes returnType = do
     jvmReturnType <- getInferredType fc !(parse fc returnType)
     (foreignFunctionClassName, foreignFunctionName, jvmReturnType, jvmArgumentTypes) <-
         parseForeignFunctionDescriptor fc jvmDescriptor jvmArgumentTypes jvmReturnType
-    let jvmArgumentTypes = getInferredType <$> jvmArgumentTypes
+    let jvmArgumentTypes = getInferredType <$> jvmArgumentTypes -- TODO: Do not discard Java lambda type descriptor
     let inferredFunctionType = MkInferredFunctionType jvmReturnType jvmArgumentTypes
     scopeIndex <- newScopeIndex
     let arity = length jvmArgumentTypes

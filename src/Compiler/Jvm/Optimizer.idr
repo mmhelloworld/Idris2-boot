@@ -210,6 +210,7 @@ mutual
     trampolineExpression expr@(NmApp fc (NmRef nameFc (UN ":__jvmTailRec__:")) args) =
         -- Do not trampoline as tail recursion will be eliminated
         Pure expr
+    trampolineExpression expr@(NmCon _ _ _ _) = Pure $ thunkExpr expr
     trampolineExpression expr@(NmApp fc _ args) = Pure $ thunkExpr expr
     trampolineExpression expr@(NmLet fc var value body) =
         NmLet fc var value <$> trampolineExpression body
@@ -553,6 +554,7 @@ mutual
     inferExtPrimArg (arg, ty) = inferExpr ty arg
 
     inferExtPrim : InferredType -> ExtPrim -> List NamedCExp -> Asm InferredType
+    inferExtPrim returnType JvmInstanceMethodCall descriptors = inferExtPrim returnType JvmStaticMethodCall descriptors
     inferExtPrim returnType JvmStaticMethodCall [ret, NmPrimVal fc (Str fn), fargs, world]
       = do args <- getFArgs fargs
            argTypes <- traverse tySpec (map fst args)
@@ -643,10 +645,12 @@ mutual
         let (_, lineStart, lineEnd) = getSourceLocation expr
         withInferenceScope lineStart lineEnd $ inferExpr exprTy expr
 
-    inferSelfTailCallParameter : SortedMap Nat InferredType -> (NamedCExp, Nat) -> Asm InferredType
-    inferSelfTailCallParameter types (arg, index) = do
+    inferSelfTailCallParameter : SortedMap Nat InferredType -> SortedMap Nat String ->
+        (NamedCExp, Nat) -> Asm ()
+    inferSelfTailCallParameter types argumentNameByIndices (arg, index) = do
         let variableType = fromMaybe IUnknown $ SortedMap.lookup index types
-        inferExpr variableType arg
+        ty <- inferExpr variableType arg
+        maybe (Pure ()) (\name => do addVariableType name ty; Pure ()) $ SortedMap.lookup index argumentNameByIndices
 
     inferExprApp : InferredType -> NamedCExp -> Asm InferredType
     inferExprApp exprTy app@(NmApp _ (NmRef _ (UN ":__jvmTailRec__:")) args) =
@@ -654,7 +658,9 @@ mutual
             [] => Pure exprTy
             args@(_ :: argsTail) => do
                 types <- getVariableTypes
-                traverse (inferSelfTailCallParameter types) $ List.zip args [0 .. length argsTail]
+                let argumentNameByIndices = SortedMap.fromList (map swap $ toList $ variableIndices !(getScope 0))
+                traverse (inferSelfTailCallParameter types argumentNameByIndices) $
+                    List.zip args [0 .. length argsTail]
                 Pure exprTy
     inferExprApp exprTy (NmApp _ (NmRef _ idrisName) args) = do
         let functionName = jvmName idrisName

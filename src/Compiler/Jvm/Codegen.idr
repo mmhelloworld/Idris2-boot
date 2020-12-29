@@ -1083,6 +1083,18 @@ mutual
                         Goto switchEndLabel
 
     jvmExtPrim : InferredType -> ExtPrim -> List NamedCExp -> Asm ()
+    jvmExtPrim returnType JvmInstanceMethodCall [ret, NmPrimVal fc (Str fn), fargs, world] = do
+        (obj :: instanceMethodArgs) <- getFArgs fargs
+            | [] => Throw fc ("JVM instance method must have at least one argument " ++ fn)
+        let args = obj :: instanceMethodArgs
+        argTypes <- traverse tySpec (map fst args)
+        methodReturnType <- tySpec ret
+        traverse assembleParameter $ List.zip (map snd args) argTypes
+        let methodDescriptor = getMethodDescriptor $ MkInferredFunctionType methodReturnType $ drop 1 argTypes
+        let (cname, mnameWithDot) = break (== '.') fn
+        let (_, mname) = break (/= '.') mnameWithDot
+        InvokeMethod InvokeVirtual cname mname methodDescriptor False
+        asmCast methodReturnType returnType
     jvmExtPrim returnType JvmStaticMethodCall [ret, NmPrimVal fc (Str fn), fargs, world] = do
         args <- getFArgs fargs
         argTypes <- traverse tySpec (map fst args)
@@ -1148,7 +1160,6 @@ assembleDefinition idrisName fc def@(MkNmFun args expr) = do
         lineNumberLabels = SortedMap.empty }
     updateCurrentFunction $ record { dynamicVariableCounter = 0 }
     let optimizedExpr = optimizedBody function
-    traverse (Debug . show) $ SortedMap.values $ scopes function
     CreateMethod [Public, Static] fileName declaringClassName methodName descriptor Nothing Nothing [] []
     MethodCodeStart
     CreateLabel methodStartLabel

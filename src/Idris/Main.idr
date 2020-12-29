@@ -29,7 +29,6 @@ import YafflePaths
 import IdrisJvm.IO
 import IdrisJvm.System
 import IdrisJvm.File
-import Java.Lang
 
 import Compiler.Jvm.Optimizer
 import Compiler.Jvm.InferredType
@@ -38,7 +37,6 @@ import Core.FC
 import Core.CompileExpr
 import Data.SortedMap
 
-%hide Java.Lang.System.exit
 %default covering
 %flag C "-g"
 
@@ -119,13 +117,6 @@ tryTTM [] = pure False
 tryTTM (Metadata f :: _) = do dumpTTM f
                               pure True
 tryTTM (c :: cs) = tryTTM cs
-
-jvmInfo : String
-jvmInfo = getJvmProperty "java.vm.vendor" ++ " " ++ getJvmProperty "java.vm.name" ++ ", " ++
-    getJvmProperty "java.version"
-  where
-    getJvmProperty : String -> String
-    getJvmProperty name = unsafePerformIO $ System.getPropertyWithDefault name ""
 
 banner : String
 banner = "     ____    __     _         ___                                           \n" ++

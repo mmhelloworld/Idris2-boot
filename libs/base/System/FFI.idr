@@ -34,8 +34,8 @@ setField : {s : _} -> Struct s fs -> (n : String) ->
 setField s n val = primIO (prim__setField s n fieldok val)
 
 public export
-jvmStatic : String -> String -> String -> String -> String
-jvmStatic className methodName arguments ret = "jvm:" ++ methodName ++ "(" ++
+jvm' : String -> String -> String -> String -> String
+jvm' className methodName arguments ret = "jvm:" ++ methodName ++ "(" ++
     arguments ++ " " ++ ret ++ ")," ++ className
 
 public export
