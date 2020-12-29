@@ -23,114 +23,190 @@ public final class IdrisBuffer {
         this.buffer.order(ByteOrder.LITTLE_ENDIAN);
     }
 
+    public static Object create(int size) {
+        return new IdrisBuffer(size);
+    }
+
+    public static int size(Object buffer) {
+        return ((IdrisBuffer) buffer).size();
+    }
+
+    public static void setByte(Object buffer, int location, byte value) {
+        ((IdrisBuffer) buffer).setByte(location, value);
+    }
+
+    public static void setChar(Object buffer, int location, char value) {
+        ((IdrisBuffer) buffer).setChar(location, value);
+    }
+
+    public static void setInt(Object buffer, int location, int value) {
+        ((IdrisBuffer) buffer).setInt(location, value);
+    }
+
+    public static void setDouble(Object buffer, int location, double value) {
+        ((IdrisBuffer) buffer).setDouble(location, value);
+    }
+
+    public static void setString(Object buffer, int location, String value) {
+        ((IdrisBuffer) buffer).setString(location, value);
+    }
+
+    public static int getByte(Object buffer, int location) {
+        return Byte.toUnsignedInt(((IdrisBuffer) buffer).getByte(location));
+    }
+
+    public static int getInt(Object buffer, int location) {
+        return ((IdrisBuffer) buffer).getInt(location);
+    }
+
+    public static double getDouble(Object buffer, int location) {
+        return ((IdrisBuffer) buffer).getDouble(location);
+    }
+
+    public static String getString(Object buffer, int location, int length) {
+        return ((IdrisBuffer) buffer).getString(location, length);
+    }
+
+    public static void writeToFile(Object buffer, File file, int location, int length) throws IOException {
+        ((IdrisBuffer) buffer).writeToFile(file, location, length);
+    }
+
+    public static int readFromFile(Object buffer,
+                                   ReadableByteChannel file,
+                                   int location,
+                                   int length) throws IOException {
+        return ((IdrisBuffer) buffer).readFromFile(file, location, length);
+    }
+
+    public static Object readFromFile(String fileName) {
+        try {
+            FileChannel channel = FileChannel.open(Paths.createPath(fileName), READ);
+            int size = (int) channel.size();
+            IdrisBuffer buffer = new IdrisBuffer(size);
+            buffer.readFromFile(channel, 0, size);
+            return buffer;
+        } catch (IOException exception) {
+            return null;
+        }
+    }
+
+    public static int getErrorCode(Object buffer) {
+        return buffer != null ? 0 : -1;
+    }
+
+    public static void writeToFile(Object buffer, WritableByteChannel file, int location, int length)
+        throws IOException {
+        ((IdrisBuffer) buffer).writeToFile(file, location, length);
+    }
+
     public int size() {
         return buffer.capacity();
     }
 
-    public void copy(int start, int len, IdrisBuffer to, int loc) {
-        if (loc >= 0 && loc + len <= to.size()) {
-            to.buffer.position(loc);
-            for (int i = start; i < start + len; i++) {
+    public void copy(int start, int length, IdrisBuffer to, int location) {
+        if (location >= 0 && location + length <= to.size()) {
+            to.buffer.position(location);
+            for (int i = start; i < start + length; i++) {
                 to.buffer.put(this.buffer.get(i));
             }
         }
     }
 
-    public void setByte(int loc, byte b) {
-        if (loc >= 0 && loc < size()) {
-            this.buffer.put(loc, b);
+    public static void copy(Object from, int start, int length, IdrisBuffer to, int location) {
+        ((IdrisBuffer) from).copy(start, length, to, location);
+    }
+
+    public void setByte(int location, byte value) {
+        if (location >= 0 && location < size()) {
+            this.buffer.put(location, value);
         }
     }
 
-    public void setChar(int loc, char val) {
-        if (loc >= 0 && loc + Character.BYTES <= size()) {
-            buffer.putChar(loc, val);
+    public void setChar(int location, char value) {
+        if (location >= 0 && location + Character.BYTES <= size()) {
+            buffer.putChar(location, value);
         }
     }
 
-    public void setInt(int loc, int val) {
-        if (loc >= 0 && loc + Integer.BYTES <= size()) {
-            buffer.putInt(loc, val);
+    public void setInt(int location, int value) {
+        if (location >= 0 && location + Integer.BYTES <= size()) {
+            buffer.putInt(location, value);
         }
     }
 
-    public void setDouble(int loc, double val) {
-        if (loc >= 0 && loc + Double.BYTES <= size()) {
-            buffer.putDouble(loc, val);
+    public void setDouble(int location, double value) {
+        if (location >= 0 && location + Double.BYTES <= size()) {
+            buffer.putDouble(location, value);
         }
     }
 
-    public void setString(int loc, String str) {
-        byte[] bytes = str.getBytes(UTF_8);
-        int len = bytes.length;
+    public void setString(int location, String value) {
+        byte[] bytes = value.getBytes(UTF_8);
+        int length = bytes.length;
 
-        int end = loc + len;
-        if (loc >= 0 && end <= size()) {
-            buffer.position(loc);
+        int end = location + length;
+        if (location >= 0 && end <= size()) {
+            buffer.position(location);
             int sourceIndex = 0;
-            for (int targetIndex = loc; targetIndex < end; targetIndex++) {
+            for (int targetIndex = location; targetIndex < end; targetIndex++) {
                 buffer.put(bytes[sourceIndex++]);
             }
         }
     }
 
-    public byte getByte(int loc) {
-        if (loc >= 0 && loc < size()) {
-            return buffer.get(loc);
+    public byte getByte(int location) {
+        if (location >= 0 && location < size()) {
+            return buffer.get(location);
         } else {
             return 0;
         }
     }
 
-    public int getInt(int loc) {
-        if (loc >= 0 && loc + Integer.BYTES <= size()) {
-            return buffer.getInt(loc);
+    public int getInt(int location) {
+        if (location >= 0 && location + Integer.BYTES <= size()) {
+            return buffer.getInt(location);
         } else {
             return 0;
         }
     }
 
-    public double getDouble(int loc) {
+    public double getDouble(int location) {
         double d;
-        if (loc >= 0 && loc + Double.BYTES <= size()) {
-            return buffer.getDouble(loc);
+        if (location >= 0 && location + Double.BYTES <= size()) {
+            return buffer.getDouble(location);
         } else {
             return 0;
         }
     }
 
-    public String getString(int loc, int len) {
-        len = loc >= 0 && loc + len <= size() ? len : 0;
-        if (len == 0) {
+    public String getString(int location, int length) {
+        length = location >= 0 && location + length <= size() ? length : 0;
+        if (length == 0) {
             return "";
         }
-        byte[] data = new byte[len];
+        byte[] data = new byte[length];
         int targetIndex = 0;
-        for (int i = loc; i < loc + len; i++) {
+        for (int i = location; i < location + length; i++) {
             data[targetIndex++] = buffer.get(i);
         }
         return new String(data, UTF_8);
     }
 
-    int readFromFile(File file, int loc, int len) throws IOException {
-        return readFromFile(FileChannel.open(file.toPath(), READ), loc, len);
+    public void writeToFile(File file, int location, int length) throws IOException {
+        writeToFile(FileChannel.open(file.toPath(), WRITE, CREATE, TRUNCATE_EXISTING), location, length);
     }
 
-    public void writeToFile(File file, int loc, int len) throws IOException {
-        writeToFile(FileChannel.open(file.toPath(), WRITE, CREATE, TRUNCATE_EXISTING), loc, len);
-    }
-
-    public int readFromFile(ReadableByteChannel file, int loc, int len) throws IOException {
+    public int readFromFile(ReadableByteChannel file, int location, int length) throws IOException {
         int size = size();
-        if (loc >= 0 && loc < size) {
-            if (loc + len > size) {
-                len = size - loc;
+        if (location >= 0 && location < size) {
+            if (location + length > size) {
+                length = size - location;
             }
-            int end = loc + len;
-            buffer.position(loc);
+            int end = location + length;
+            buffer.position(location);
             byte[] data = new byte[1024];
             int numberOfBytesRead = 0;
-            for (int index = loc; index < end; index += 1024) {
+            for (int index = location; index < end; index += 1024) {
                 int limit = Math.min(end - index, 1024);
                 numberOfBytesRead += file.read(ByteBuffer.wrap(data, 0, limit));
                 buffer.put(data, 0, limit);
@@ -141,20 +217,34 @@ public final class IdrisBuffer {
         }
     }
 
-    public void writeToFile(WritableByteChannel file, int loc, int len) throws IOException {
+    public void writeToFile(WritableByteChannel file, int location, int length) throws IOException {
         int size = size();
-        if (loc >= 0 && loc < size) {
-            if (loc + len > size) {
-                len = size - loc;
+        if (location >= 0 && location < size) {
+            if (location + length > size) {
+                length = size - location;
             }
-            int end = loc + len;
+            int end = location + length;
             byte[] data = new byte[1024];
-            buffer.position(loc);
-            for (int index = loc; index < end; index += 1024) {
+            buffer.position(location);
+            for (int index = location; index < end; index += 1024) {
                 int limit = Math.min(end - index, 1024);
                 buffer.get(data, 0, limit);
                 file.write(ByteBuffer.wrap(data, 0, limit));
             }
         }
+    }
+
+    public static int writeToFile(String fileName, Object buffer, int length) {
+        try {
+            FileChannel channel = FileChannel.open(Paths.createPath(fileName), CREATE, WRITE);
+            ((IdrisBuffer) buffer).writeToFile(channel, 0, length);
+            return 0;
+        } catch (IOException exception) {
+            return -1;
+        }
+    }
+
+    int readFromFile(File file, int location, int length) throws IOException {
+        return readFromFile(FileChannel.open(file.toPath(), READ), location, length);
     }
 }

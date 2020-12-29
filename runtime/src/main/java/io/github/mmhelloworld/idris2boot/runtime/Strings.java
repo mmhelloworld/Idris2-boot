@@ -1,5 +1,7 @@
 package io.github.mmhelloworld.idris2boot.runtime;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 public final class Strings {
     private Strings() {
     }
@@ -21,5 +23,9 @@ public final class Strings {
             current = (IdrisObject) current.getProperty(1);
         }
         return builder.toString();
+    }
+
+    public static int bytesLengthUtf8(Object str) {
+        return ((String) str).getBytes(UTF_8).length;
     }
 }

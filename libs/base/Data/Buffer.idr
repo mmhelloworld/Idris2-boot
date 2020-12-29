@@ -1,18 +1,29 @@
 module Data.Buffer
 
 import System.File
+import System.FFI
 
 export
 data Buffer : Type where [external]
 
-%foreign  "scheme:blodwen-buffer-size"
+bufferClass : String
+bufferClass = "io/github/mmhelloworld/idris2boot/runtime/IdrisBuffer"
+
+stringsClass : String
+stringsClass = "io/github/mmhelloworld/idris2boot/runtime/Strings"
+
+%foreign
+    "scheme:blodwen-buffer-size"
+    jvm bufferClass "size"
 prim__bufferSize : Buffer -> Int
 
 export
 rawSize : Buffer -> IO Int
 rawSize buf = pure (prim__bufferSize buf)
 
-%foreign "scheme:blodwen-new-buffer"
+%foreign
+    "scheme:blodwen-new-buffer"
+    jvm bufferClass "create"
 prim__newBuffer : Int -> PrimIO Buffer
 
 export
@@ -29,7 +40,9 @@ export
 freeBuffer : Buffer -> IO ()
 freeBuffer buf = pure ()
 
-%foreign "scheme:blodwen-buffer-setbyte"
+%foreign
+    "scheme:blodwen-buffer-setbyte"
+    jvm bufferClass "setByte"
 prim__setByte : Buffer -> Int -> Int -> PrimIO ()
 
 -- Assumes val is in the range 0-255
@@ -38,7 +51,9 @@ setByte : Buffer -> (loc : Int) -> (val : Int) -> IO ()
 setByte buf loc val
     = primIO (prim__setByte buf loc val)
 
-%foreign "scheme:blodwen-buffer-getbyte"
+%foreign
+    "scheme:blodwen-buffer-getbyte"
+    jvm bufferClass "getByte"
 prim__getByte : Buffer -> Int -> PrimIO Int
 
 export
@@ -46,7 +61,9 @@ getByte : Buffer -> (loc : Int) -> IO Int
 getByte buf loc
     = primIO (prim__getByte buf loc)
 
-%foreign "scheme:blodwen-buffer-setint32"
+%foreign
+    "scheme:blodwen-buffer-setint32"
+    jvm bufferClass "setInt"
 prim__setInt32 : Buffer -> Int -> Int -> PrimIO ()
 
 export
@@ -54,7 +71,9 @@ setInt32 : Buffer -> (loc : Int) -> (val : Int) -> IO ()
 setInt32 buf loc val
     = primIO (prim__setInt32 buf loc val)
 
-%foreign "scheme:blodwen-buffer-getint32"
+%foreign
+    "scheme:blodwen-buffer-getint32"
+    jvm bufferClass "getInt"
 prim__getInt32 : Buffer -> Int -> PrimIO Int
 
 export
@@ -62,7 +81,9 @@ getInt32 : Buffer -> (loc : Int) -> IO Int
 getInt32 buf loc
     = primIO (prim__getInt32 buf loc)
 
-%foreign "scheme:blodwen-buffer-setint"
+%foreign
+    "scheme:blodwen-buffer-setint"
+    jvm bufferClass "setInt"
 prim__setInt : Buffer -> Int -> Int -> PrimIO ()
 
 export
@@ -70,7 +91,9 @@ setInt : Buffer -> (loc : Int) -> (val : Int) -> IO ()
 setInt buf loc val
     = primIO (prim__setInt buf loc val)
 
-%foreign "scheme:blodwen-buffer-getint"
+%foreign
+    "scheme:blodwen-buffer-getint"
+    jvm bufferClass "getInt"
 prim__getInt : Buffer -> Int -> PrimIO Int
 
 export
@@ -78,7 +101,9 @@ getInt : Buffer -> (loc : Int) -> IO Int
 getInt buf loc
     = primIO (prim__getInt buf loc)
 
-%foreign "scheme:blodwen-buffer-setdouble"
+%foreign
+    "scheme:blodwen-buffer-setdouble"
+    jvm bufferClass "setDouble"
 prim__setDouble : Buffer -> Int -> Double -> PrimIO ()
 
 export
@@ -86,7 +111,9 @@ setDouble : Buffer -> (loc : Int) -> (val : Double) -> IO ()
 setDouble buf loc val
     = primIO (prim__setDouble buf loc val)
 
-%foreign "scheme:blodwen-buffer-getdouble"
+%foreign
+    "scheme:blodwen-buffer-getdouble"
+    jvm bufferClass "getDouble"
 prim__getDouble : Buffer -> Int -> PrimIO Double
 
 export
@@ -96,10 +123,14 @@ getDouble buf loc
 
 -- Get the length of a string in bytes, rather than characters
 export
-%foreign "C:strlen,libc 6"
+%foreign
+    "C:strlen,libc 6"
+    jvm stringsClass "bytesLengthUtf8"
 stringByteLength : String -> Int
 
-%foreign "scheme:blodwen-buffer-setstring"
+%foreign
+    "scheme:blodwen-buffer-setstring"
+    jvm bufferClass "setString"
 prim__setString : Buffer -> Int -> String -> PrimIO ()
 
 export
@@ -107,7 +138,9 @@ setString : Buffer -> (loc : Int) -> (val : String) -> IO ()
 setString buf loc val
     = primIO (prim__setString buf loc val)
 
-%foreign "scheme:blodwen-buffer-getstring"
+%foreign
+    "scheme:blodwen-buffer-getstring"
+    jvm bufferClass "getString"
 prim__getString : Buffer -> Int -> Int -> PrimIO String
 
 export
@@ -127,7 +160,9 @@ bufferData buf
         = do val <- getByte buf (loc - 1)
              unpackTo (val :: acc) (loc - 1)
 
-%foreign "scheme:blodwen-buffer-copydata"
+%foreign
+    "scheme:blodwen-buffer-copydata"
+    jvm bufferClass "copy"
 prim__copyData : Buffer -> Int -> Int -> Buffer -> Int -> PrimIO ()
 
 export
@@ -148,10 +183,14 @@ copyData src start len dest loc
 --             then pure (Right (MkBuffer buf size (loc + read)))
 --             else pure (Left FileReadError)
 
-%foreign "scheme:blodwen-read-bytevec"
+%foreign
+    "scheme:blodwen-read-bytevec"
+    jvm bufferClass "readFromFile"
 prim__readBufferFromFile : String -> PrimIO Buffer
 
-%foreign "scheme:blodwen-isbytevec"
+%foreign
+    "scheme:blodwen-isbytevec"
+    jvm bufferClass "getErrorCode"
 prim__isBuffer : Buffer -> Int
 
 -- Create a new buffer by reading all the contents from the given file
@@ -165,7 +204,9 @@ createBufferFromFile fn
             else do let sz = prim__bufferSize buf
                     pure (Right buf)
 
-%foreign "scheme:blodwen-write-bytevec"
+%foreign
+    "scheme:blodwen-write-bytevec"
+    jvm bufferClass "writeToFile"
 prim__writeBuffer : String -> Buffer -> Int -> PrimIO Int
 
 export

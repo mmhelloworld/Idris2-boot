@@ -196,7 +196,7 @@ asmCast ILong ty = boxLong
 
 asmCast IFloat ty = boxFloat
 
-asmCast IDouble ty = if ty == doubleThunkType then thunkDouble else boxDouble
+asmCast IDouble ty = if isThunkType ty then thunkDouble else boxDouble
 
 asmCast (IRef _) arr@(IArray _) = Checkcast $ getJvmTypeDescriptor arr
 
