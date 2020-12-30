@@ -71,9 +71,20 @@ idris2: src/YafflePaths.idr check_version
 idris2c: dist/idris2.c
 	${MAKE} -C dist
 
-src/YafflePaths.idr:
-	echo 'module YafflePaths; export yversion : ((Nat,Nat,Nat), String); yversion = ((${MAJOR},${MINOR},${PATCH}), "${GIT_SHA1}")' > src/YafflePaths.idr
-	echo 'export yprefix : String; yprefix = "${PREFIX}"' >> src/YafflePaths.idr
+src/YafflePaths.idr: FORCE
+	echo 'module YafflePaths; import IdrisJvm.IO; import Java.Lang; export yversion : ((Nat,Nat,Nat), String); yversion = ((${MAJOR},${MINOR},${PATCH}), "${GIT_SHA1}")' > src/YafflePaths.idr
+	echo 'export yprefix : String' >> src/YafflePaths.idr
+	echo 'yprefix = home ++ "/.idris2boot" where' >> src/YafflePaths.idr
+	echo '  home : String' >> src/YafflePaths.idr
+	echo '  home = unsafePerformIO $$ do' >> src/YafflePaths.idr
+	echo '	idrisHomeProperty <- System.getProperty "IDRIS2_BOOT_HOME"' >> src/YafflePaths.idr
+	echo '	case idrisHomeProperty of' >> src/YafflePaths.idr
+	echo '	  Just propertyValue => pure propertyValue' >> src/YafflePaths.idr
+	echo '	  Nothing => do' >> src/YafflePaths.idr
+	echo '		idrisHomeEnv <- System.getenv "IDRIS2_BOOT_HOME"' >> src/YafflePaths.idr
+	echo '		maybe (System.getPropertyWithDefault "user.home" "") pure idrisHomeEnv' >> src/YafflePaths.idr
+
+FORCE:
 
 prelude:
 	${MAKE} -C libs/prelude IDRIS2=../../idris2boot

@@ -11,6 +11,7 @@
     <name>Idris 2 JVM Bootstrap</name>
 
     <modules>
+        <module>compiler</module>
         <module>jvm-assembler</module>
         <module>runtime</module>
     </modules>
