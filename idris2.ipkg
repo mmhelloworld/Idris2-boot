@@ -154,7 +154,7 @@ modules =
     Yaffle.REPL
 
 sourcedir = src
-executable = idris2
+executable = idris2boot
 opts = "--partial-eval --portable-codegen jvm"
 
 pkgs = idrisjvmffi, contrib

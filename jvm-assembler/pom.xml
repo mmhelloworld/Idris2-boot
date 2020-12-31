@@ -18,30 +18,30 @@
                 <artifactId>maven-resources-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>copy-idris2-classes</id>
+                        <id>copy-idris2-libs</id>
                         <phase>process-classes</phase>
                         <goals>
                             <goal>copy-resources</goal>
                         </goals>
                         <configuration>
-                            <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+                            <outputDirectory>${project.build.directory}/idris2-boot-jvm/.idris2boot/idris2-0.1.1</outputDirectory>
                             <overwrite>true</overwrite>
                             <resources>
                                 <resource>
-                                    <directory>${project.parent.basedir}/idris2-classes</directory>
+                                    <directory>${user.home}/.idris2boot/idris2-0.1.1</directory>
                                 </resource>
                             </resources>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
-
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>appassembler-maven-plugin</artifactId>
                 <configuration>
-                    <extraJvmArguments>-Xss10m</extraJvmArguments>
+                    <extraJvmArguments>-Xss10m -DIDRIS2_BOOT_HOME=@BASEDIR@</extraJvmArguments>
                     <repositoryName>lib</repositoryName>
+                    <repositoryLayout>flat</repositoryLayout>
                     <assembleDirectory>${project.build.directory}/idris2-boot-jvm</assembleDirectory>
                     <programs>
                         <program>
@@ -83,15 +83,21 @@
 
     <dependencies>
         <dependency>
-            <groupId>io.github.mmhelloworld</groupId>
-            <artifactId>idris-jvm-runtime</artifactId>
-            <scope>runtime</scope>
+            <groupId>io.github.mmhelloworld.idris2boot</groupId>
+            <artifactId>compiler</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <dependency>
             <groupId>io.github.mmhelloworld.idris2boot</groupId>
             <artifactId>runtime</artifactId>
             <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.mmhelloworld</groupId>
+            <artifactId>idris-jvm-runtime</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>
