@@ -438,7 +438,7 @@ mutual
     inferExpr exprTy expr@(NmCon fc name tag args) =
         inferExprCon exprTy (fst $ getSourceLocation expr) name args
     inferExpr exprTy (NmOp _ fn args) = inferExprOp fn args
-    inferExpr exprTy (NmExtPrim _ fn args) = inferExtPrim exprTy (toPrim fn) args
+    inferExpr exprTy (NmExtPrim fc fn args) = inferExtPrim fc exprTy (toPrim fn) args
     inferExpr exprTy (NmForce _ expr) = inferExpr delayedType expr
 
     inferExpr exprTy (NmConCase _ sc [] Nothing) = Pure IUnknown
@@ -553,9 +553,10 @@ mutual
     inferExtPrimArg : (NamedCExp, InferredType) -> Asm InferredType
     inferExtPrimArg (arg, ty) = inferExpr ty arg
 
-    inferExtPrim : InferredType -> ExtPrim -> List NamedCExp -> Asm InferredType
-    inferExtPrim returnType JvmInstanceMethodCall descriptors = inferExtPrim returnType JvmStaticMethodCall descriptors
-    inferExtPrim returnType JvmStaticMethodCall [ret, NmPrimVal fc (Str fn), fargs, world]
+    inferExtPrim : FC -> InferredType -> ExtPrim -> List NamedCExp -> Asm InferredType
+    inferExtPrim fc returnType JvmInstanceMethodCall descriptors =
+        inferExtPrim fc returnType JvmStaticMethodCall descriptors
+    inferExtPrim _ returnType JvmStaticMethodCall [ret, NmPrimVal fc (Str fn), fargs, world]
       = do args <- getFArgs fargs
            argTypes <- traverse tySpec (map fst args)
            methodReturnType <- tySpec ret
@@ -563,30 +564,30 @@ mutual
            let (cname, mnameWithDot) = break (== '.') fn
            let (_, mname) = break (/= '.') mnameWithDot
            pure methodReturnType
-    inferExtPrim returnType NewArray [_, size, val, world] = do
+    inferExtPrim _ returnType NewArray [_, size, val, world] = do
         inferExpr IInt size
         inferExpr IUnknown val
         pure arrayListType
-    inferExtPrim returnType ArrayGet [_, arr, pos, world] = do
+    inferExtPrim _ returnType ArrayGet [_, arr, pos, world] = do
         inferExpr arrayListType arr
         inferExpr IInt pos
         pure IUnknown
-    inferExtPrim returnType ArraySet [_, arr, pos, val, world] = do
+    inferExtPrim _ returnType ArraySet [_, arr, pos, val, world] = do
         inferExpr arrayListType arr
         inferExpr IInt pos
         inferExpr IUnknown val
         pure inferredObjectType
-    inferExtPrim returnType NewIORef [_, val, world] = do
+    inferExtPrim _ returnType NewIORef [_, val, world] = do
         inferExpr IUnknown val
         pure refType
-    inferExtPrim returnType ReadIORef [_, ref, world] = do
+    inferExtPrim _ returnType ReadIORef [_, ref, world] = do
         inferExpr refType ref
         pure IUnknown
-    inferExtPrim returnType WriteIORef [_, ref, val, world] = do
+    inferExtPrim _ returnType WriteIORef [_, ref, val, world] = do
         inferExpr refType ref
         inferExpr IUnknown val
         pure inferredObjectType
-    inferExtPrim _ prim args = Throw emptyFC ("Unsupported external function " ++ show prim)
+    inferExtPrim fc _ prim args = Throw fc ("Unsupported external function " ++ show prim)
 
     inferExprLamWithParameterType : Maybe (Name, InferredType) -> (parameterValueExpr: Maybe (Asm ())) ->
         NamedCExp -> Asm InferredType

@@ -12,6 +12,11 @@
     <artifactId>jvm-assembler</artifactId>
     <name>Idris 2 JVM Bootstrap Assembler</name>
 
+    <properties>
+        <idris.tests></idris.tests>
+        <skipTests>false</skipTests>
+    </properties>
+
     <build>
         <plugins>
             <plugin>
@@ -24,11 +29,13 @@
                             <goal>copy-resources</goal>
                         </goals>
                         <configuration>
-                            <outputDirectory>${project.build.directory}/idris2-boot-jvm/.idris2boot/idris2-0.1.1</outputDirectory>
+                            <outputDirectory>${project.build.directory}/idris2-boot-jvm/.idris2boot/idris2-0.1.1
+                            </outputDirectory>
                             <overwrite>true</overwrite>
                             <resources>
                                 <resource>
-                                    <directory>${user.home}/.idris2boot/idris2-0.1.1</directory>
+                                    <directory>${project.parent.basedir}/compiler/target/.idris2boot/idris2-0.1.1
+                                    </directory>
                                 </resource>
                             </resources>
                         </configuration>
@@ -59,7 +66,6 @@
                     </execution>
                 </executions>
             </plugin>
-
             <plugin>
                 <artifactId>maven-assembly-plugin</artifactId>
                 <configuration>
@@ -75,6 +81,28 @@
                         <goals>
                             <goal>single</goal>
                         </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>idris-test</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skipTests}</skip>
+                            <executable>make</executable>
+                            <workingDirectory>${project.parent.basedir}</workingDirectory>
+                            <arguments>
+                                <argument>test</argument>
+                                <argument>${idris.tests}</argument>
+                            </arguments>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

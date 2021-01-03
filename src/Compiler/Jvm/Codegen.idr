@@ -259,7 +259,7 @@ mutual
         assembleExprOp returnType fc fn args
         when isTailCall $ asmReturn returnType
     assembleExpr isTailCall returnType (NmExtPrim fc p args) = do
-        jvmExtPrim returnType (toPrim p) args
+        jvmExtPrim fc returnType (toPrim p) args
         when isTailCall $ asmReturn returnType
     assembleExpr isTailCall returnType (NmForce _ expr) = do
         assembleExpr False delayedType expr
@@ -596,11 +596,11 @@ mutual
         asmCast inferredBigIntegerType returnType
 
     assembleExprOp returnType fc (Cast StringType IntegerType) [x] = do
-        New "java/math/BigInteger"
+        New "java/math/BigDecimal"
         Dup
         assembleExpr False inferredStringType x
         InvokeMethod InvokeSpecial "java/math/BigDecimal" "<init>" "(Ljava/lang/String;)V" False
-        InvokeMethod InvokeVirtual "java/math/BigInteger" "toBigInteger" "()Ljava/math/BigInteger;" False
+        InvokeMethod InvokeVirtual "java/math/BigDecimal" "toBigInteger" "()Ljava/math/BigInteger;" False
         asmCast inferredBigIntegerType returnType
 
     assembleExprOp returnType fc (Cast IntegerType IntType) [x] = do
@@ -1082,8 +1082,8 @@ mutual
                         storeVar IInt IInt hashCodePositionVariableIndex
                         Goto switchEndLabel
 
-    jvmExtPrim : InferredType -> ExtPrim -> List NamedCExp -> Asm ()
-    jvmExtPrim returnType JvmInstanceMethodCall [ret, NmPrimVal fc (Str fn), fargs, world] = do
+    jvmExtPrim : FC -> InferredType -> ExtPrim -> List NamedCExp -> Asm ()
+    jvmExtPrim _ returnType JvmInstanceMethodCall [ret, NmPrimVal fc (Str fn), fargs, world] = do
         (obj :: instanceMethodArgs) <- getFArgs fargs
             | [] => Throw fc ("JVM instance method must have at least one argument " ++ fn)
         let args = obj :: instanceMethodArgs
@@ -1095,7 +1095,7 @@ mutual
         let (_, mname) = break (/= '.') mnameWithDot
         InvokeMethod InvokeVirtual cname mname methodDescriptor False
         asmCast methodReturnType returnType
-    jvmExtPrim returnType JvmStaticMethodCall [ret, NmPrimVal fc (Str fn), fargs, world] = do
+    jvmExtPrim _ returnType JvmStaticMethodCall [ret, NmPrimVal fc (Str fn), fargs, world] = do
         args <- getFArgs fargs
         argTypes <- traverse tySpec (map fst args)
         methodReturnType <- tySpec ret
@@ -1105,39 +1105,39 @@ mutual
         let (_, mname) = break (/= '.') mnameWithDot
         InvokeMethod InvokeStatic cname mname methodDescriptor False
         asmCast methodReturnType returnType
-    jvmExtPrim returnType NewArray [_, size, val, world] = do
+    jvmExtPrim _ returnType NewArray [_, size, val, world] = do
         assembleExpr False IInt size
         assembleExpr False IUnknown val
         InvokeMethod InvokeStatic arraysClass "create" "(ILjava/lang/Object;)Ljava/util/ArrayList;" False
         asmCast arrayListType returnType
-    jvmExtPrim returnType ArrayGet [_, arr, pos, world] = do
+    jvmExtPrim _ returnType ArrayGet [_, arr, pos, world] = do
         assembleExpr False arrayListType arr
         assembleExpr False IInt pos
         InvokeMethod InvokeVirtual arrayListClass "get" "(I)Ljava/lang/Object;" False
         asmCast inferredObjectType returnType
-    jvmExtPrim returnType ArraySet [_, arr, pos, val, world] = do
+    jvmExtPrim _ returnType ArraySet [_, arr, pos, val, world] = do
         assembleExpr False arrayListType arr
         assembleExpr False IInt pos
         assembleExpr False IUnknown val
         InvokeMethod InvokeVirtual arrayListClass "set" "(ILjava/lang/Object;)Ljava/lang/Object;" False
         asmCast inferredObjectType returnType
-    jvmExtPrim returnType NewIORef [_, val, world] = do
+    jvmExtPrim _ returnType NewIORef [_, val, world] = do
         New refClass
         Dup
         assembleExpr False IUnknown val
         InvokeMethod InvokeSpecial refClass "<init>" "(Ljava/lang/Object;)V" False
         asmCast refType returnType
-    jvmExtPrim returnType ReadIORef [_, ref, world] = do
+    jvmExtPrim _ returnType ReadIORef [_, ref, world] = do
         assembleExpr False refType ref
         InvokeMethod InvokeVirtual refClass "getValue" "()Ljava/lang/Object;" False
         asmCast inferredObjectType returnType
-    jvmExtPrim returnType WriteIORef [_, ref, val, world] = do
+    jvmExtPrim _ returnType WriteIORef [_, ref, val, world] = do
         assembleExpr False refType ref
         assembleExpr False IUnknown val
         InvokeMethod InvokeVirtual refClass "setValue" "(Ljava/lang/Object;)V" False
         Aconstnull
         asmCast inferredObjectType returnType
-    jvmExtPrim _ prim args = Throw emptyFC ("Unsupported external function " ++ show prim)
+    jvmExtPrim fc _ prim args = Throw fc ("Unsupported external function " ++ show prim)
 
 assembleDefinition : {auto c : Ref Ctxt Defs} -> Name -> FC -> NamedDef -> Asm ()
 assembleDefinition idrisName fc def@(MkNmFun args expr) = do

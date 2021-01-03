@@ -2,6 +2,7 @@ package io.github.mmhelloworld.idris2boot.runtime;
 
 import java.nio.channels.Channels;
 import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.toList;
@@ -96,5 +97,11 @@ public final class Runtime {
         } else {
             return (double) possibleThunk;
         }
+    }
+
+    public static Thread fork(Function<Object, Object> action) {
+        Thread thread = new Thread(() -> Runtime.unwrap(action.apply(null)));
+        thread.start();
+        return thread;
     }
 }

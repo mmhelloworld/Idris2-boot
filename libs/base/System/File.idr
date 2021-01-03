@@ -35,16 +35,16 @@ prim_error : FilePtr -> PrimIO Int
 prim_fileErrno : PrimIO Int
 
 %foreign support "idris2_readLine"
-         jvm' fileClass "getLine" fileClass "String"
+         jvm' fileClass "readLine" fileClass "String"
 prim__readLine : FilePtr -> PrimIO (Ptr String)
 %foreign support "idris2_readChars"
-         jvm' fileClass "getChars" ("int " ++ fileClass) "String"
+         jvm' fileClass "readChars" ("int " ++ fileClass) "String"
 prim__readChars : Int -> FilePtr -> PrimIO (Ptr String)
 %foreign support "fgetc"
-         jvm' fileClass "getChar" fileClass "char"
+         jvm' fileClass "readChar" fileClass "char"
 prim__readChar : FilePtr -> PrimIO Char
 %foreign support "idris2_writeLine"
-         jvm' fileClass "writeString" (fileClass ++ " String") "int"
+         jvm' fileClass "writeLine" (fileClass ++ " String") "int"
 prim__writeLine : FilePtr -> String -> PrimIO Int
 %foreign support "idris2_eof"
          jvm' fileClass "isEof" fileClass "int"
@@ -63,13 +63,13 @@ prim__fileSize : FilePtr -> PrimIO Int
 prim__fPoll : FilePtr -> PrimIO Int
 
 %foreign support "idris2_fileAccessTime"
-         jvm' fileClass "getFileAccessTime" fileClass "int"
+         jvm' fileClass "getAccessTime" fileClass "int"
 prim__fileAccessTime : FilePtr -> PrimIO Int
 %foreign support "idris2_fileModifiedTime"
-         jvm' fileClass "getFileModifiedTime" fileClass "int"
+         jvm' fileClass "getModifiedTime" fileClass "int"
 prim__fileModifiedTime : FilePtr -> PrimIO Int
 %foreign support "idris2_fileStatusTime"
-         jvm' fileClass "getFileStatusTime" fileClass "int"
+         jvm' fileClass "getStatusTime" fileClass "int"
 prim__fileStatusTime : FilePtr -> PrimIO Int
 
 %foreign support "idris2_stdin"

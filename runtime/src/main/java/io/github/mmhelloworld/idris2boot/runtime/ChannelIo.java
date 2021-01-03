@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.IntStream;
 
 import static io.github.mmhelloworld.idris2boot.runtime.Paths.createPath;
 import static io.github.mmhelloworld.idris2boot.runtime.Runtime.setErrorNumber;
@@ -44,7 +43,7 @@ import static java.util.Collections.singletonList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toSet;
 
-public class ChannelIo implements ReadableByteChannel, WritableByteChannel, Closeable {
+public class ChannelIo implements ReadableByteChannel, WritableByteChannel, Closeable, IdrisFile<ChannelIo> {
     private static final boolean IS_POSIX = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
     private static final Map<Integer, PosixFilePermission> modeToPermissions = new HashMap<>();
 
@@ -79,36 +78,34 @@ public class ChannelIo implements ReadableByteChannel, WritableByteChannel, Clos
         this.byteBufferIo = new ByteBufferIo(reader, writer);
     }
 
+    ChannelIo(Channel channel, ByteBufferIo byteBufferIo) {
+        this.path = null;
+        this.channel = channel;
+        this.byteBufferIo = byteBufferIo;
+    }
+
     public ChannelIo(Path path) {
         this(path, null);
     }
 
-    public static char getChar(ChannelIo file) {
-        return file.getChar();
+    public static char readChar(ChannelIo file) {
+        return file.readChar();
     }
 
-    public static String getChars(int count, ChannelIo file) {
-        return file.getChars(count);
+    public static String readChars(int count, ChannelIo file) {
+        return file.readChars(count);
     }
 
-    public static String getLine(ChannelIo file) {
-        return file.getLine();
+    public static String readLine(ChannelIo file) {
+        return file.readLine();
     }
 
-    public static int writeString(ChannelIo file, String str) {
-        file.writeString(str);
-        return file.exception != null ? 0 : 1;
+    public static int writeLine(ChannelIo file, String str) {
+        return file.writeLine(str);
     }
 
     public static int isEof(ChannelIo file) {
-        return file.isEof() || file.exception != null ? 1 : 0;
-    }
-
-    public static ChannelIo open(Path path, OpenOption... openOptions) throws IOException {
-        if (path.getParent() != null) {
-            Files.createDirectories(path.getParent());
-        }
-        return new ChannelIo(path, FileChannel.open(path, openOptions));
+        return file.isEof();
     }
 
     public static ChannelIo open(String name, String mode) {
@@ -119,7 +116,7 @@ public class ChannelIo implements ReadableByteChannel, WritableByteChannel, Clos
             }
             return open(path, getOpenOptions(mode).toArray(new OpenOption[]{}));
         } catch (Exception exception) {
-            setErrorNumber(getErrorNumber(exception));
+            setErrorNumber(ChannelIo.getErrorNumber(exception));
             return null;
         }
     }
@@ -143,93 +140,91 @@ public class ChannelIo implements ReadableByteChannel, WritableByteChannel, Clos
         Path path = createPath(pathString);
         byte[] bytes = content.getBytes(UTF_8);
         createDirectories(path.getParent());
-        Files.write(path, bytes);
+        java.nio.file.Files.write(path, bytes);
     }
 
     public static int flush(ChannelIo file) {
-        file.flush();
-        return file.exception == null ? 0 : 1;
+        return file.flush();
     }
 
     public static int size(ChannelIo file) {
-        return (int) file.size();
+        return file.size();
     }
 
     public static int delete(ChannelIo file) {
         return file.delete();
     }
 
-    public static int getFileModifiedTime(ChannelIo file) {
-        return (int) file.getFileModifiedTime();
+    public static int getModifiedTime(ChannelIo file) {
+        return (int) file.getModifiedTime();
     }
 
-    public static int getFileAccessTime(ChannelIo file) {
-        return (int) file.getFileAccessTime();
+    public static int getAccessTime(ChannelIo file) {
+        return file.getAccessTime();
     }
 
-    public static int getFileStatusTime(ChannelIo file) {
-        return (int) file.getFileStatusTime();
+    public static int getStatusTime(ChannelIo file) {
+        return (int) file.getStatusTime();
     }
 
     public static int getErrorNumber(ChannelIo file) {
-        return getErrorNumber(file.exception);
+        return file.getErrorNumber();
     }
 
-    public char getChar() {
+    @Override
+    public char readChar() {
         return (char) withExceptionHandling(byteBufferIo::getChar);
     }
 
-    public String getChars(int count) {
-        return withExceptionHandling(() -> {
-            String result = IntStream.range(0, count)
-                .map(index -> getChar())
-                .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append)
-                .toString();
-            return exception != null ? result : null;
-        });
-    }
-
-    public String getLine() {
+    @Override
+    public String readLine() {
         return withExceptionHandling(byteBufferIo::getLine);
     }
 
     public void handleException(Exception e) {
         this.exception = e;
+        if (exception != null) {
+            exception.printStackTrace();
+        }
         Runtime.setErrorNumber(getErrorNumber(e));
     }
 
-    public void writeString(String str) {
+    @Override
+    public int writeLine(String str) {
         withExceptionHandling(() -> {
             byteBufferIo.writeString(str);
             flush();
             return null;
         });
+        return exception != null ? 0 : 1;
     }
 
     public int chmod(int mode) {
         return withExceptionHandling(() -> {
-            if (IS_POSIX) {
+            if (IS_POSIX && path != null) {
                 Files.setPosixFilePermissions(path, createPosixFilePermissions(mode));
             }
             return 0;
         }, -1);
     }
 
-    public void flush() {
+    public int flush() {
         withExceptionHandling(() -> {
             if (channel instanceof FileChannel) {
                 ((FileChannel) channel).force(true);
             }
             return null;
         });
+        return exception == null ? 0 : 1;
     }
 
-    public boolean isEof() {
-        return withExceptionHandling(() -> !byteBufferIo.hasChar(), true);
+    public int isEof() {
+        boolean isEof = withExceptionHandling(() -> !byteBufferIo.hasChar(), true);
+        return isEof || exception != null ? 1 : 0;
     }
 
-    public long size() {
-        return withExceptionHandling(() -> {
+    public int size() {
+        return (int) withExceptionHandling(() -> {
             if (channel instanceof SeekableByteChannel) {
                 return ((SeekableByteChannel) channel).size();
             } else {
@@ -253,28 +248,52 @@ public class ChannelIo implements ReadableByteChannel, WritableByteChannel, Clos
         });
     }
 
+    @Override
+    public int getErrorNumber() {
+        return getErrorNumber(exception);
+    }
+
+    @Override
+    public String readChars(int count) {
+        return withExceptionHandling(() -> {
+            int index = 0;
+            StringBuilder builder = new StringBuilder();
+            while (index < count && byteBufferIo.hasChar()) {
+                builder.append(readChar());
+                index++;
+            }
+            return exception != null ? builder.toString() : null;
+        });
+    }
+
     public int delete() {
         return withExceptionHandling(() -> {
-            Files.delete(path);
+            if (path != null) {
+                Files.delete(path);
+            }
             return 0;
         }, -1);
     }
 
-    public long getFileModifiedTime() {
-        return getTimeAttribute(BasicFileAttributes::lastModifiedTime);
+    @Override
+    public int getModifiedTime() {
+        return (int) getTimeAttribute(BasicFileAttributes::lastModifiedTime);
     }
 
-    public long getFileAccessTime() {
-        return getTimeAttribute(BasicFileAttributes::lastAccessTime);
+    @Override
+    public int getAccessTime() {
+        return (int) getTimeAttribute(BasicFileAttributes::lastAccessTime);
     }
 
-    public long getFileStatusTime() {
-        return getTimeAttribute(BasicFileAttributes::creationTime);
+    @Override
+    public int getStatusTime() {
+        return (int) getTimeAttribute(BasicFileAttributes::creationTime);
     }
 
     public long getTimeAttribute(Function<BasicFileAttributes, FileTime> attributeGetter) {
-        return withExceptionHandling(() -> attributeGetter.apply(Files.readAttributes(path, BasicFileAttributes.class))
-            .to(SECONDS), -1);
+        return withExceptionHandling(() ->
+            path == null ? 0 : attributeGetter.apply(Files.readAttributes(path, BasicFileAttributes.class))
+                .to(SECONDS), -1);
     }
 
     @Override
@@ -286,6 +305,45 @@ public class ChannelIo implements ReadableByteChannel, WritableByteChannel, Clos
     public int write(ByteBuffer src) throws IOException {
         return ((WritableByteChannel) channel).write(src);
     }
+
+    private static ChannelIo open(Path path, OpenOption... openOptions) throws IOException {
+        if (path.getParent() != null) {
+            java.nio.file.Files.createDirectories(path.getParent());
+        }
+        return new ChannelIo(path, FileChannel.open(path, openOptions));
+    }
+
+    private static void ensureParentDirectory(Path path) throws IOException {
+        Path parent = path.getParent();
+        if (parent != null) {
+            createDirectories(parent);
+        }
+    }
+
+    private static boolean isReadOnlyMode(String mode) {
+        return "r".equalsIgnoreCase(mode);
+    }
+
+    private static Collection<OpenOption> getOpenOptions(String mode) {
+        switch (mode.toLowerCase()) {
+            case "r":
+                return singletonList(StandardOpenOption.READ);
+            case "w":
+                return asList(StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                    StandardOpenOption.TRUNCATE_EXISTING);
+            case "a":
+                return asList(StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            case "r+":
+                return asList(StandardOpenOption.READ, StandardOpenOption.WRITE);
+            case "w+":
+                return asList(StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            case "a+":
+                return asList(StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.APPEND);
+            default:
+                throw new IllegalArgumentException("Unknown file mode " + mode);
+        }
+    }
+
 
     static int getErrorNumber(Exception exception) {
         if (exception == null) {
@@ -354,36 +412,5 @@ public class ChannelIo implements ReadableByteChannel, WritableByteChannel, Clos
             .filter(modeAndPermission -> (mode & modeAndPermission.getKey()) == modeAndPermission.getKey())
             .map(Map.Entry::getValue)
             .collect(toSet());
-    }
-
-    private static void ensureParentDirectory(Path path) throws IOException {
-        Path parent = path.getParent();
-        if (parent != null) {
-            createDirectories(parent);
-        }
-    }
-
-    private static boolean isReadOnlyMode(String mode) {
-        return "r".equalsIgnoreCase(mode);
-    }
-
-    private static Collection<OpenOption> getOpenOptions(String mode) {
-        switch (mode.toLowerCase()) {
-            case "r":
-                return singletonList(StandardOpenOption.READ);
-            case "w":
-                return asList(StandardOpenOption.CREATE, StandardOpenOption.WRITE,
-                    StandardOpenOption.TRUNCATE_EXISTING);
-            case "a":
-                return asList(StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            case "r+":
-                return asList(StandardOpenOption.READ, StandardOpenOption.WRITE);
-            case "w+":
-                return asList(StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-            case "a+":
-                return asList(StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.APPEND);
-            default:
-                throw new IllegalArgumentException("Unknown file mode " + mode);
-        }
     }
 }

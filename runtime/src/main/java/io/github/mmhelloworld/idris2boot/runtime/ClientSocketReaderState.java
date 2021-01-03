@@ -1,14 +1,13 @@
 package io.github.mmhelloworld.idris2boot.runtime;
 
 import java.nio.ByteBuffer;
-import java.util.concurrent.CountDownLatch;
 
 final class ClientSocketReaderState {
-    private final ByteBuffer buffer;
-    private final CountDownLatch doneSignal;
+    private ByteBuffer buffer;
+    private final ResettableCountDownLatch doneSignal;
     private int bytesRead;
 
-    ClientSocketReaderState(ByteBuffer buffer, CountDownLatch doneSignal) {
+    ClientSocketReaderState(ByteBuffer buffer, ResettableCountDownLatch doneSignal) {
         this.buffer = buffer;
         this.doneSignal = doneSignal;
     }
@@ -17,7 +16,7 @@ final class ClientSocketReaderState {
         return buffer;
     }
 
-    CountDownLatch getDoneSignal() {
+    ResettableCountDownLatch getDoneSignal() {
         return doneSignal;
     }
 

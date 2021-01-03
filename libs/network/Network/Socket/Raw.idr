@@ -6,7 +6,7 @@
 module Network.Socket.Raw
 
 import public Network.Socket.Data
-
+import System.FFI
 -- ---------------------------------------------------------------- [ Pointers ]
 
 public export
@@ -21,6 +21,9 @@ data BufPtr = BPtr AnyPtr
 public export
 data SockaddrPtr = SAPtr AnyPtr
 
+idrisSocketClass : String
+idrisSocketClass = "io/github/mmhelloworld/idris2boot/runtime/IdrisSocket"
+
 -- ---------------------------------------------------------- [ Socket Utilies ]
 
 ||| Put a value in a buffer
@@ -33,14 +36,18 @@ export
 sock_peek : BufPtr -> Int -> IO Int
 sock_peek (BPtr ptr) offset = cCall Int "idrnet_peek" [ptr, offset]
 
+%foreign
+    jvm idrisSocketClass "free"
+prim_freeSocketPointer : AnyPtr -> PrimIO ()
+
 ||| Frees a given pointer
 export
 sock_free : BufPtr -> IO ()
-sock_free (BPtr ptr) = cCall () "idrnet_free" [ptr]
+sock_free (BPtr ptr) = primIO $ prim_freeSocketPointer ptr
 
 export
 sockaddr_free : SockaddrPtr -> IO ()
-sockaddr_free (SAPtr ptr) = cCall () "idrnet_free" [ptr]
+sockaddr_free (SAPtr ptr) = primIO $ prim_freeSocketPointer ptr
 
 ||| Allocates an amount of memory given by the ByteLength parameter.
 |||
@@ -49,23 +56,33 @@ export
 sock_alloc : ByteLength -> IO BufPtr
 sock_alloc bl = map BPtr $ cCall AnyPtr "idrnet_malloc" [bl]
 
+%foreign
+    jvm' idrisSocketClass ".getSocketPort" idrisSocketClass "int"
+prim_getSocketPort : AnyPtr -> PrimIO Int
+
 ||| Retrieves the port the given socket is bound to
 export
 getSockPort : Socket -> IO Port
-getSockPort sock = cCall Int "idrnet_sockaddr_port" [descriptor sock]
+getSockPort sock = primIO $ prim_getSocketPort (descriptor sock)
 
+%foreign
+    jvm' idrisSocketClass "getSocketAddressFamily" "java/lang/Object" "int"
+prim_getSocketFamily : AnyPtr -> PrimIO Int
+
+%foreign
+    jvm' idrisSocketClass "getSocketAddressHostName" "java/lang/Object" "java/lang/String"
+prim_getSocketAddressHostName : AnyPtr -> PrimIO String
 
 ||| Retrieves a socket address from a sockaddr pointer
 export
 getSockAddr : SockaddrPtr -> IO SocketAddress
 getSockAddr (SAPtr ptr) = do
-  addr_family_int <- cCall Int "idrnet_sockaddr_family"  [ptr]
+  addr_family_int <- primIO $ prim_getSocketFamily ptr
 
   -- ASSUMPTION: Foreign call returns a valid int
   assert_total (case getSocketFamily addr_family_int of
     Just AF_INET => do
-      ipv4_addr <- cCall String "idrnet_sockaddr_ipv4" [ptr]
-
+      ipv4_addr <- primIO $ prim_getSocketAddressHostName ptr
       pure $ parseIPv4 ipv4_addr
     Just AF_INET6 => pure IPv6Addr
     Just AF_UNSPEC => pure InvalidAddress)

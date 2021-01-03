@@ -8,6 +8,7 @@ module Network.Socket.Data
 import Data.List
 import Data.List1
 import Data.Strings
+import System.FFI
 
 -- ------------------------------------------------------------ [ Type Aliases ]
 
@@ -36,7 +37,7 @@ SocketError = Int
 ||| SocketDescriptor: Native C Socket Descriptor
 public export
 SocketDescriptor : Type
-SocketDescriptor = Int
+SocketDescriptor = AnyPtr
 
 public export
 Port : Type
@@ -51,20 +52,20 @@ BACKLOG = 20
 
 export
 EAGAIN : Int
-EAGAIN =
-  -- I'm sorry
-  -- maybe
-  unsafePerformIO $ cCall Int "idrnet_geteagain" []
+EAGAIN = 11
 
 -- ---------------------------------------------------------------- [ Error Code ]
+%foreign
+    jvm runtimeClass "getErrorNumber"
+prim_getSocketErrorNumber : PrimIO Int
 
 export
 getErrno : IO SocketError
-getErrno = cCall Int "idrnet_errno" []
+getErrno = primIO prim_getSocketErrorNumber
 
 export
 nullPtr : AnyPtr -> IO Bool
-nullPtr p = cCall Bool "isNull" [p]
+nullPtr p = pure $ prim__nullAnyPtr p /= 0
 
 -- -------------------------------------------------------------- [ Interfaces ]
 

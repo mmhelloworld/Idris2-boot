@@ -15,9 +15,8 @@
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
-        <idris.tests></idris.tests>
         <skipIdrisCompile>false</skipIdrisCompile>
-        <skipTests>false</skipTests>
+        <skipIdrisInstallLibrary>false</skipIdrisInstallLibrary>
     </properties>
 
     <build>
@@ -40,7 +39,6 @@
                                 <argument>idris2</argument>
                             </arguments>
                             <environmentVariables>
-                                <PREFIX>${project.build.directory}</PREFIX>
                                 <IDRIS2_BOOT_HOME>${project.build.directory}</IDRIS2_BOOT_HOME>
                             </environmentVariables>
                         </configuration>
@@ -52,32 +50,15 @@
                             <goal>exec</goal>
                         </goals>
                         <configuration>
-                            <skip>${skipIdrisCompile}</skip>
+                            <skip>${skipIdrisInstallLibrary}</skip>
                             <executable>make</executable>
                             <workingDirectory>${project.parent.basedir}</workingDirectory>
                             <arguments>
                                 <argument>install-libs</argument>
                             </arguments>
                             <environmentVariables>
-                                <PREFIX>${project.build.directory}</PREFIX>
                                 <IDRIS2_BOOT_HOME>${project.build.directory}</IDRIS2_BOOT_HOME>
                             </environmentVariables>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>idris-test</id>
-                        <phase>test</phase>
-                        <goals>
-                            <goal>exec</goal>
-                        </goals>
-                        <configuration>
-                            <skip>${skipTests}</skip>
-                            <executable>make</executable>
-                            <workingDirectory>${project.parent.basedir}</workingDirectory>
-                            <arguments>
-                                <argument>test</argument>
-                                <argument>${idris.tests}</argument>
-                            </arguments>
                         </configuration>
                     </execution>
                     <execution>

@@ -111,7 +111,7 @@ options = [MkOpt ["--check", "-c"] [] [CheckOnly]
            MkOpt ["--no-prelude"] [] [NoPrelude]
               (Just "Don't implicitly import Prelude"),
            MkOpt ["--codegen", "--cg"] ["backend"] (\f => [SetCG f])
-              (Just "Set code generator (default chez)"),
+              (Just "Set code generator (default jvm)"),
            MkOpt ["--package", "-p"] ["package"] (\f => [PkgPath f])
               (Just "Add a package as a dependency"),
 

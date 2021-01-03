@@ -7,8 +7,42 @@ module Network.Socket
 import public Network.Socket.Data
 import Network.Socket.Raw
 import Data.List
+import System.FFI
+
+idrisSocketClass : String
+idrisSocketClass = "io/github/mmhelloworld/idris2boot/runtime/IdrisSocket"
 
 -- ----------------------------------------------------- [ Network Socket API. ]
+%foreign
+    jvm' idrisSocketClass "create" "int int int" idrisSocketClass
+prim_createSocket : Int -> Int -> Int -> PrimIO SocketDescriptor
+
+%foreign
+    jvm' idrisSocketClass ".close" idrisSocketClass "void"
+prim_closeSocket : AnyPtr -> PrimIO ()
+
+%foreign
+    jvm' idrisSocketClass ".bind"
+        "io/github/mmhelloworld/idris2boot/runtime/IdrisSocket int int java/lang/String int" "int"
+prim_bindSocket : AnyPtr -> Int -> Int -> String -> Int -> PrimIO Int
+
+%foreign
+    jvm' idrisSocketClass ".connect"
+        "io/github/mmhelloworld/idris2boot/runtime/IdrisSocket int int java/lang/String int" "int"
+prim_connectSocket : AnyPtr -> Int -> Int -> String -> Int -> PrimIO Int
+
+%foreign
+    jvm' idrisSocketClass ".listen" "io/github/mmhelloworld/idris2boot/runtime/IdrisSocket int" "int"
+prim_listenSocket : AnyPtr -> Int -> PrimIO Int
+
+%foreign
+    jvm' idrisSocketClass ".accept"
+        "io/github/mmhelloworld/idris2boot/runtime/IdrisSocket java/lang/Object" idrisSocketClass
+prim_acceptSocket : AnyPtr -> AnyPtr -> PrimIO SocketDescriptor
+
+%foreign
+    jvm idrisSocketClass "createSocketAddress"
+prim_createSocketAddress : PrimIO AnyPtr
 
 ||| Creates a UNIX socket with the given family, socket type and protocol
 ||| number. Returns either a socket or an error.
@@ -18,16 +52,16 @@ socket : (fam  : SocketFamily)
       -> (pnum : ProtocolNumber)
       -> IO (Either SocketError Socket)
 socket sf st pn = do
-  socket_res <- cCall Int "idrnet_socket" [toCode sf, toCode st, pn]
-
-  if socket_res == -1
-    then map Left getErrno
+  socket_res <- primIO $ prim_createSocket (toCode sf) (toCode st) pn
+  errorNumber <- getErrno
+  if errorNumber /= 0
+    then pure $ Left errorNumber
     else pure $ Right (MkSocket socket_res sf st pn)
 
 ||| Close a socket
 export
 close : Socket -> IO ()
-close sock = cCall () "close" [descriptor sock]
+close sock = primIO $ prim_closeSocket (descriptor sock)
 
 ||| Binds a socket to the given socket address and port.
 ||| Returns 0 on success, an error code otherwise.
@@ -37,10 +71,8 @@ bind : (sock : Socket)
     -> (port : Port)
     -> IO Int
 bind sock addr port = do
-    bind_res <- cCall Int "idrnet_bind"
-                [ descriptor sock, toCode $ family sock
-                , toCode $ socketType sock, saString addr,  port
-                ]
+    bind_res <- primIO $ prim_bindSocket (descriptor sock) (toCode $ family sock) (toCode $ socketType sock)
+        (saString addr) port
     if bind_res == (-1)
       then getErrno
       else pure 0
@@ -57,9 +89,8 @@ connect : (sock : Socket)
        -> (port : Port)
        -> IO ResultCode
 connect sock addr port = do
-  conn_res <- cCall Int "idrnet_connect"
-              [ descriptor sock, toCode $ family sock, toCode $ socketType sock, show addr, port]
-
+  conn_res <- primIO $ prim_connectSocket (descriptor sock) (toCode $ family sock) (toCode $ socketType sock)
+    (show addr) port
   if conn_res == (-1)
     then getErrno
     else pure 0
@@ -70,7 +101,7 @@ connect sock addr port = do
 export
 listen : (sock : Socket) -> IO Int
 listen sock = do
-  listen_res <- cCall Int "listen" [ descriptor sock, BACKLOG ]
+  listen_res <- primIO $ prim_listenSocket (descriptor sock) BACKLOG
   if listen_res == (-1)
     then getErrno
     else pure 0
@@ -91,16 +122,22 @@ accept sock = do
   -- We need a pointer to a sockaddr structure. This is then passed into
   -- idrnet_accept and populated. We can then query it for the SocketAddr and free it.
 
-  sockaddr_ptr <- cCall AnyPtr "idrnet_create_sockaddr" []
+  sockaddr_ptr <- primIO prim_createSocketAddress
 
-  accept_res <- cCall Int "idrnet_accept" [ descriptor sock, sockaddr_ptr ]
-  if accept_res == (-1)
-    then map Left getErrno
+  accept_res <- primIO $ prim_acceptSocket (descriptor sock) sockaddr_ptr
+  errorNumber <- getErrno
+  if errorNumber /= 0
+    then pure $ Left errorNumber
     else do
       let (MkSocket _ fam ty p_num) = sock
       sockaddr <- getSockAddr (SAPtr sockaddr_ptr)
       sockaddr_free (SAPtr sockaddr_ptr)
       pure $ Right ((MkSocket accept_res fam ty p_num), sockaddr)
+
+%foreign
+    jvm' idrisSocketClass ".send"
+        "io/github/mmhelloworld/idris2boot/runtime/IdrisSocket java/lang/String" "int"
+prim_sendSocket : SocketDescriptor -> String -> PrimIO Int
 
 ||| Send data on the specified socket.
 |||
@@ -114,11 +151,16 @@ send : (sock : Socket)
     -> (msg  : String)
     -> IO (Either SocketError ResultCode)
 send sock dat = do
-  send_res <- cCall Int "idrnet_send" [ descriptor sock, dat ]
+  send_res <- primIO $ prim_sendSocket (descriptor sock) dat
 
   if send_res == (-1)
     then map Left getErrno
     else pure $ Right send_res
+
+%foreign
+    jvm' idrisSocketClass ".receive"
+        "io/github/mmhelloworld/idris2boot/runtime/IdrisSocket int" "java/lang/String"
+prim_receiveSocket : SocketDescriptor -> Int -> PrimIO String
 
 ||| Receive data on the specified socket.
 |||
@@ -136,23 +178,11 @@ recv : (sock : Socket)
 recv sock len = do
   -- Firstly make the request, get some kind of recv structure which
   -- contains the result of the recv and possibly the retrieved payload
-  recv_struct_ptr <- cCall AnyPtr "idrnet_recv" [ descriptor sock, len]
-  recv_res <- cCall Int "idrnet_get_recv_res"  [ recv_struct_ptr ]
-
-  if recv_res == (-1)
-    then do
-      errno <- getErrno
-      freeRecvStruct (RSPtr recv_struct_ptr)
-      pure $ Left errno
-    else
-      if recv_res == 0
-        then do
-           freeRecvStruct (RSPtr recv_struct_ptr)
-           pure $ Left 0
-        else do
-           payload <- cCall String "idrnet_get_recv_payload" [ recv_struct_ptr ]
-           freeRecvStruct (RSPtr recv_struct_ptr)
-           pure $ Right (payload, recv_res)
+  payload <- primIO $ prim_receiveSocket (descriptor sock) len
+  errorNumber <- getErrno
+  if errorNumber /= 0
+    then pure $ Left errorNumber
+    else pure $ Right (payload, len)
 
 ||| Receive all the remaining data on the specified socket.
 |||
