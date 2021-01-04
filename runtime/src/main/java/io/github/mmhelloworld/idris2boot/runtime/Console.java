@@ -7,9 +7,7 @@ import java.io.InputStreamReader;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public final class Console {
-    private static BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in, UTF_8));
-
-    private static boolean isStdinEof = false;
+    private static final BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in, UTF_8));
 
     private Console() {
     }
@@ -21,7 +19,6 @@ public final class Console {
 
     public static String getString() throws IOException {
         String line = stdin.readLine();
-        isStdinEof = line == null;
-        return isStdinEof ? "" : line;
+        return line == null ? "" : line;
     }
 }

@@ -58,6 +58,24 @@ arrayListClass = "java/util/ArrayList"
 arrayListType : InferredType
 arrayListType = IRef arrayListClass
 
+idrisListClass : String
+idrisListClass = "io/github/mmhelloworld/idris2boot/runtime/IdrisList"
+
+idrisListType : InferredType
+idrisListType = IRef idrisListClass
+
+idrisNilClass : String
+idrisNilClass = "io/github/mmhelloworld/idris2boot/runtime/IdrisList$Nil"
+
+idrisNilType : InferredType
+idrisNilType = IRef idrisNilClass
+
+idrisConsClass : String
+idrisConsClass = "io/github/mmhelloworld/idris2boot/runtime/IdrisList$Cons"
+
+idrisConsType : InferredType
+idrisConsType = IRef idrisConsClass
+
 isPrimitive : InferredType -> Bool
 isPrimitive IBool = True
 isPrimitive IByte = True

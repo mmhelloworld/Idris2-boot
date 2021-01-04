@@ -10,9 +10,13 @@ support fn = "C:" ++ fn ++ ", libidris2_support"
 libc : String -> String
 libc fn = "C:" ++ fn ++ ", libc 6"
 
-%foreign support "idris2_sleep"
+%foreign
+    support "idris2_sleep"
+    "jvm:sleep(int void),io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
 prim_sleep : Int -> PrimIO ()
-%foreign support "idris2_usleep"
+%foreign
+    support "idris2_usleep"
+    "jvm:usleep(int void),io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
 prim_usleep : Int -> PrimIO ()
 
 export
@@ -25,20 +29,30 @@ usleep sec = primIO (prim_usleep sec)
 
 -- This one is going to vary for different back ends. Probably needs a
 -- better convention. Will revisit...
-%foreign "scheme:blodwen-args"
+%foreign
+    "scheme:blodwen-args"
+    "jvm:getProgramArgs(io/github/mmhelloworld/idris2boot/runtime/IdrisList),io/github/mmhelloworld/idris2boot/runtime/Runtime"
 prim__getArgs : PrimIO (List String)
 
 export
 getArgs : IO (List String)
 getArgs = primIO prim__getArgs
 
-%foreign libc "getenv"
+%foreign
+    libc "getenv"
+    "jvm:getEnv(java/lang/String java/lang/String),io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
 prim_getEnv : String -> PrimIO (Ptr String)
-%foreign support "idris2_getEnvPair"
+%foreign
+    support "idris2_getEnvPair"
+    "jvm:getEnvPair(int java/lang/String),io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
 prim_getEnvPair : Int -> PrimIO (Ptr String)
-%foreign libc "setenv"
+%foreign
+    libc "setenv"
+    "jvm:setEnv(java/lang/String java/lang/String int int),io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
 prim_setEnv : String -> String -> Int -> PrimIO Int
-%foreign libc "setenv"
+%foreign
+    libc "setenv"
+    "jvm:clearEnv(java/lang/String int),io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
 prim_unsetEnv : String -> PrimIO Int
 
 export
@@ -84,6 +98,7 @@ unsetEnv var
 
 %foreign libc "system"
          "scheme:blodwen-system"
+         "jvm:runCommand(java/lang/String int),io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
 prim_system : String -> PrimIO Int
 
 export
@@ -92,13 +107,16 @@ system cmd = primIO (prim_system cmd)
 
 %foreign support "idris2_time"
          "scheme:blodwen-time"
+         "jvm:time(int),io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
 prim_time : PrimIO Int
 
 export
 time : IO Integer
 time = pure $ cast !(primIO prim_time)
 
-%foreign libc "exit"
+%foreign
+    libc "exit"
+    "jvm:exit(int void),io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
 prim_exit : Int -> PrimIO ()
 
 ||| Programs can either terminate successfully, or end in a caught

@@ -623,14 +623,16 @@ mutual
         let valueExpr = NmLocal (getFC expr) (UN generatedVariableName)
         parentScope <- getScope !getCurrentScopeIndex
         inferExprLamWithParameterType (Just (UN generatedVariableName, valueType))
-            (Just (inferValue parentScope valueType))
+            (Just (inferValue parentScope generatedVariableName valueType))
             (substituteVariableSubMethodBody valueExpr expr)
       where
-        inferValue : Scope -> InferredType -> Asm ()
-        inferValue enclosingScope valueType = do
+        inferValue : Scope -> String -> InferredType -> Asm ()
+        inferValue enclosingScope variableName valueType = do
             lambdaScopeIndex <- getCurrentScopeIndex
             updateCurrentScopeIndex (index enclosingScope)
             inferExpr valueType value
+            createVariable variableName
+            addVariableType variableName valueType
             updateCurrentScopeIndex lambdaScopeIndex
     inferExprLam _ parameterName expr =
         inferExprLamWithParameterType ((\name => (name, inferredObjectType)) <$> parameterName) Nothing expr

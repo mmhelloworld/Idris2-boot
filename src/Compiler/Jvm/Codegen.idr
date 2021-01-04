@@ -238,6 +238,22 @@ mutual
         asmCast inferredObjectType returnType
         when isTailCall $ asmReturn returnType
 
+    assembleExpr isTailCall returnType expr@(NmCon fc (NS ["Prelude"] (UN "Nil")) _ _) = do
+        Field GetStatic idrisNilClass "INSTANCE"
+            "Lio/github/mmhelloworld/idris2boot/runtime/IdrisList$Nil;"
+        asmCast idrisNilType returnType
+        when isTailCall $ asmReturn returnType
+
+    assembleExpr isTailCall returnType expr@(NmCon fc (NS ["Prelude"] (UN "::")) _ [head, tail]) = do
+        New idrisConsClass
+        Dup
+        assembleExpr False inferredObjectType head
+        assembleExpr False idrisListType tail
+        InvokeMethod InvokeSpecial idrisConsClass "<init>"
+            "(Ljava/lang/Object;Lio/github/mmhelloworld/idris2boot/runtime/IdrisList;)V" False
+        asmCast idrisConsType returnType
+        when isTailCall $ asmReturn returnType
+
     assembleExpr isTailCall returnType expr@(NmCon fc name tag args) = do
         let fileName = fst $ getSourceLocation expr
         let constructorClassName = jvmSimpleName name
@@ -705,12 +721,13 @@ mutual
             let variableTypes = SortedMap.values !(loadClosures declaringScope scope)
             maybe (Pure ()) id parameterValueExpr
             let invokeDynamicDescriptor = getMethodDescriptor $ MkInferredFunctionType lambdaInterfaceType variableTypes
-            let implementationMethodReturnType = getLambdaImplementationMethodReturnType lambdaType
+            let isExtracted = isJust parameterValueExpr
+            let implementationMethodReturnType = if isExtracted then lambdaBodyReturnType
+                else getLambdaImplementationMethodReturnType lambdaType
             let implementationMethodDescriptor = getMethodDescriptor $
                 MkInferredFunctionType implementationMethodReturnType (variableTypes ++ toList parameterTypes)
             let instantiatedMethodDescriptor = getMethodDescriptor $
                 MkInferredFunctionType implementationMethodReturnType $ toList parameterTypes
-            let isExtracted = isJust parameterValueExpr
             let methodPrefix = if isExtracted then "extracted" else "lambda"
             lambdaMethodName <- getLambdaImplementationMethodName methodPrefix
             let interfaceMethodName = getLambdaInterfaceMethodName lambdaType
@@ -736,7 +753,9 @@ mutual
             let labelEnd = methodEndLabel
             addLambdaStartLabel scope labelStart
             maybe (Pure ()) (\parentScopeIndex => updateScopeStartLabel parentScopeIndex labelStart) (parentIndex scope)
-            let lambdaReturnType = if lambdaType == ThunkLambda then thunkType else inferredObjectType
+            let lambdaReturnType = if isExtracted then lambdaBodyReturnType
+                else if lambdaType == ThunkLambda then thunkType
+                else inferredObjectType
             assembleExpr True lambdaReturnType expr
             addLambdaEndLabel scope labelEnd
             maybe (Pure ()) (\parentScopeIndex => updateScopeEndLabel parentScopeIndex labelEnd) (parentIndex scope)

@@ -1,7 +1,6 @@
 package io.github.mmhelloworld.idris2boot.runtime;
 
 import java.nio.channels.Channels;
-import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -12,19 +11,19 @@ public final class Runtime {
     private static final ChannelIo stdout = new ChannelIo(null, Channels.newChannel(System.out));
     private static final ChannelIo stderr = new ChannelIo(null, Channels.newChannel(System.err));
     private static final ThreadLocal<Integer> ERROR_NUMBER = ThreadLocal.withInitial(() -> 0);
-    private static List<String> programArgs;
+    private static IdrisList programArgs;
 
     private Runtime() {
     }
 
-    public static List<String> getProgramArgs() {
+    public static IdrisList getProgramArgs() {
         return programArgs;
     }
 
     public static void setProgramArgs(String[] args) {
         // "java" as the executable name for the first argument to conform to Idris' getArgs function
-        programArgs = Stream.concat(Stream.of("java"), Stream.of(args))
-            .collect(toList());
+        programArgs = IdrisList.fromIterable(Stream.concat(Stream.of("java"), Stream.of(args))
+            .collect(toList()));
     }
 
     public static ChannelIo getStdin() {
@@ -104,4 +103,5 @@ public final class Runtime {
         thread.start();
         return thread;
     }
+
 }
