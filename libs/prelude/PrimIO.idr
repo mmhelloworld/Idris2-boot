@@ -41,9 +41,13 @@ io_bind (MkIO fn) k
                       MkIO res = k x' in
                       res w')
 
-%foreign "C:putchar,libc 6"
+%foreign
+    "C:putchar,libc 6"
+    "jvm:putChar(char void),io/github/mmhelloworld/idris2boot/runtime/Console"
 prim__putChar : Char -> (1 x : %World) -> IORes ()
-%foreign "C:getchar,libc 6"
+%foreign
+    "C:getchar,libc 6"
+    "jvm:getChar(char),io/github/mmhelloworld/idris2boot/runtime/Console"
 %extern prim__getChar : (1 x : %World) -> IORes Char
 
 -- A pointer representing a given parameter type

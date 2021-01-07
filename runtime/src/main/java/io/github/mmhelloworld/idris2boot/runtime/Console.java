@@ -21,4 +21,12 @@ public final class Console {
         String line = stdin.readLine();
         return line == null ? "" : line;
     }
+
+    public static void putChar(char c) {
+        System.out.print(c);
+    }
+
+    public static char getChar() throws IOException {
+        return (char) stdin.read();
+    }
 }

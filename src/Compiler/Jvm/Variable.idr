@@ -161,21 +161,21 @@ asmCast IInt IShort = I2s
 asmCast IFloat IDouble = F2d
 asmCast IDouble IFloat = D2f
 
-asmCast ty IBool = boolObjToBool
+asmCast ty IBool = if isThunkType ty then unwrapIntThunk else boolObjToBool
 
-asmCast ty IByte = objToByte
+asmCast ty IByte = if isThunkType ty then unwrapIntThunk else objToByte
 
-asmCast ty IChar = charObjToChar
+asmCast ty IChar = if isThunkType ty then unwrapIntThunk else charObjToChar
 
-asmCast ty IShort = objToShort
+asmCast ty IShort = if isThunkType ty then unwrapIntThunk else objToShort
 
-asmCast ty IInt = objToInt
+asmCast ty IInt = if isThunkType ty then unwrapIntThunk else objToInt
 
 asmCast ty ILong = longObjToLong
 
-asmCast ty IFloat = objToFloat
+asmCast ty IFloat = if isThunkType ty then unwrapDoubleThunk else objToFloat
 
-asmCast ty IDouble = objToDouble
+asmCast ty IDouble = if isThunkType ty then unwrapDoubleThunk else objToDouble
 
 asmCast IBool ty = if isThunkType ty then thunkInt else boxBool
 

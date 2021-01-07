@@ -783,7 +783,8 @@ mutual
                 LabelStart label
                 updateScopeEndLabel scopeIndex label
 
-            loadVariables : SortedMap Nat InferredType -> SortedMap Nat (InferredType, InferredType) -> List Nat -> Asm ()
+            loadVariables : SortedMap Nat InferredType -> SortedMap Nat (InferredType, InferredType) ->
+                List Nat -> Asm ()
             loadVariables _ _ [] = Pure ()
             loadVariables declaringScopeVariableTypes types (var :: vars) = do
                 let (sourceType, targetType) = fromMaybe (IUnknown, IUnknown) (SortedMap.lookup var types)
@@ -1156,6 +1157,12 @@ mutual
         InvokeMethod InvokeVirtual refClass "setValue" "(Ljava/lang/Object;)V" False
         Aconstnull
         asmCast inferredObjectType returnType
+    jvmExtPrim _ returnType SysOS [] = do
+        InvokeMethod InvokeStatic idrisSystemClass "getOsName" "()Ljava/lang/String;" False
+        asmCast inferredStringType returnType
+    jvmExtPrim _ returnType SysCodegen [] = do
+        Ldc $ StringConst "\"jvm\""
+        asmCast inferredStringType returnType
     jvmExtPrim fc _ prim args = Throw fc ("Unsupported external function " ++ show prim)
 
 assembleDefinition : {auto c : Ref Ctxt Defs} -> Name -> FC -> NamedDef -> Asm ()

@@ -16,6 +16,7 @@ public abstract class IdrisList extends AbstractSequentialList<Object> implement
         while (iterator.hasNext()) {
             list = new Cons(iterator.next(), list);
         }
+
         return reverse(list);
     }
 
@@ -28,6 +29,12 @@ public abstract class IdrisList extends AbstractSequentialList<Object> implement
             current = cons.tail;
         }
         return result;
+    }
+
+    public static String fastPack(IdrisList idrisCharacterList) {
+        return idrisCharacterList.stream()
+            .reduce(new StringBuilder(), (builder, element) -> builder.append((char) element), StringBuilder::append)
+            .toString();
     }
 
     public static class Nil extends IdrisList {

@@ -626,7 +626,9 @@ getVariableTypesAtScope scopeIndex = go SortedMap.empty !(getVariables scopeInde
     go acc (var :: vars) = do
         varIndex <- getVariableIndexAtScope scopeIndex var
         ty <- getVariableTypeAtScope scopeIndex var
-        go (SortedMap.insert varIndex ty acc) vars
+        case SortedMap.lookup varIndex acc of
+            Nothing => go (SortedMap.insert varIndex ty acc) vars
+            _ => go acc vars
 
 getVariableTypes : Asm (SortedMap Nat InferredType)
 getVariableTypes = getVariableTypesAtScope !getCurrentScopeIndex

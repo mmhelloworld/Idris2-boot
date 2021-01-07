@@ -58,6 +58,9 @@ arrayListClass = "java/util/ArrayList"
 arrayListType : InferredType
 arrayListType = IRef arrayListClass
 
+idrisSystemClass : String
+idrisSystemClass = "io/github/mmhelloworld/idris2boot/runtime/IdrisSystem"
+
 idrisListClass : String
 idrisListClass = "io/github/mmhelloworld/idris2boot/runtime/IdrisList"
 

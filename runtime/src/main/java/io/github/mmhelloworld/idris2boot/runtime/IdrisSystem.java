@@ -1,5 +1,7 @@
 package io.github.mmhelloworld.idris2boot.runtime;
 
+import org.apache.commons.lang3.SystemUtils;
+
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
@@ -11,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 import static java.lang.System.currentTimeMillis;
 
-public class IdrisSystem {
+public final class IdrisSystem {
     private static final Map<String, String> environmentVariables;
     private static final List<String> environmentVariableNames;
 
@@ -19,6 +21,9 @@ public class IdrisSystem {
         environmentVariables = new LinkedHashMap<>(System.getenv());
         environmentVariables.putAll((Map) System.getProperties());
         environmentVariableNames = new ArrayList<>(environmentVariables.keySet());
+    }
+
+    private IdrisSystem() {
     }
 
     public static int time() {
@@ -66,6 +71,19 @@ public class IdrisSystem {
 
     public static void exit(int exitCode) {
         System.exit(exitCode);
+    }
+
+    public static String getOsName() {
+        // To conform to support/chez/support.ss:1
+        if (SystemUtils.IS_OS_MAC) {
+            return "darwin";
+        } else if (SystemUtils.IS_OS_UNIX) {
+            return "unix";
+        } else if (SystemUtils.IS_OS_WINDOWS) {
+            return "windows";
+        } else {
+            return "unknown";
+        }
     }
 
     // This may not be adequate but simple enough for basic cases

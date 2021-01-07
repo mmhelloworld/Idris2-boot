@@ -587,6 +587,8 @@ mutual
         inferExpr refType ref
         inferExpr IUnknown val
         pure inferredObjectType
+    inferExtPrim _ returnType SysOS [] = pure inferredStringType
+    inferExtPrim _ returnType SysCodegen [] = pure inferredStringType
     inferExtPrim fc _ prim args = Throw fc ("Unsupported external function " ++ show prim)
 
     inferExprLamWithParameterType : Maybe (Name, InferredType) -> (parameterValueExpr: Maybe (Asm ())) ->
