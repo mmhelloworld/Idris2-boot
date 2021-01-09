@@ -1101,7 +1101,8 @@ pack : List Char -> String
 pack [] = ""
 pack (x :: xs) = strCons x (pack xs)
 
-%foreign "jvm:fastPack(io/github/mmhelloworld/idris2boot/runtime/IdrisList java/lang/String),io/github/mmhelloworld/idris2boot/runtime/IdrisList"
+%foreign
+    "jvm:fastPack(io/github/mmhelloworld/idris2boot/runtime/IdrisList java/lang/String),io/github/mmhelloworld/idris2boot/runtime/IdrisList"
 export
 prim__fastPack : List Char -> String
 

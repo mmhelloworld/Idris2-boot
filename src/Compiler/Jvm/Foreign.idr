@@ -34,6 +34,11 @@ namespace ForeignType
     getInferredType (FunctionForeignType interfaceName _ _ _) = IRef interfaceName
     getInferredType (AtomicForeignType ty) = ty
 
+Show ForeignType where
+    show (AtomicForeignType ty) = show ty
+    show (FunctionForeignType interfaceName methodName interfaceMethodType implementationMethodType) =
+        interfaceName ++ "." ++ methodName ++ "#" ++ show interfaceMethodType ++ "#" ++ show implementationMethodType
+
 namespace ForeignImplementationType
     data ForeignImplementationType
         = AtomicForeignImplementationType InferredType
@@ -69,6 +74,10 @@ namespace ForeignImplementationType
         parse fc (CFIORes returnType) = parse fc returnType
         parse fc (CFFun argument returnType) = parseCallbackType fc [argument] returnType
         parse _ _ = Pure $ AtomicForeignImplementationType inferredObjectType
+
+Show ForeignImplementationType where
+    show (AtomicForeignImplementationType ty) = show ty
+    show (FunctionForeignImplementationType functionType) = show functionType
 
 throwExplicitFunctionDescriptorRequired : FC -> Asm a
 throwExplicitFunctionDescriptorRequired fc = Throw fc ("Explicit function descriptor must be provided while " ++
@@ -114,8 +123,9 @@ parseForeignFunctionDescriptor fc (functionDescriptor :: className :: _) argumen
             argumentDeclarationTypes <- traverse (getForeignCallbackDeclarationType fc) argumentTypes
             Pure (className, fn, returnType, argumentDeclarationTypes)
         (fn, signature) => do
-            let descriptorsWithIdrisTypes =
-                List.zip (Strings.split (== ' ') (strTail . fst $ break (== ')') signature)) argumentTypes
+            let descriptorsWithIdrisTypes = List.zip
+                (Strings.split (== ' ') (strTail . fst $ break (== ')') signature))
+                (argumentTypes ++ [AtomicForeignImplementationType returnType])
             (argumentTypesReversed, returnType) <- go [] descriptorsWithIdrisTypes
             Pure (className, fn, returnType, reverse argumentTypesReversed)
   where

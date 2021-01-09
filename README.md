@@ -96,6 +96,15 @@ play. Good luck :).
 
 Information about external dependencies are presented in [INSTALL.md](INSTALL.md).
 
+Build with Maven
+=======================
++ To install with tests: `mvn install`
++ To install without tests `mvn install -DskipTests`
++ To recompile libraries without building compiler `mvn install -DskipIdrisCompile`
++ To recompile without building libraries `mvn install -DskipIdrisInstallLibrary`
++ To run all JVM tests `mvn -f jvm-assembler/pom.xml exec:exec@idris-test -Didris.tests="only=jvm"`
++ To run a single JVM test `mvn -f jvm-assembler/pom.xml exec:exec@idris-test -Didris.tests="only=jvm/jvm001"`
+
 Things still missing
 ====================
 
