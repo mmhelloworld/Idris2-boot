@@ -766,18 +766,17 @@ mutual
         inferExpr IInt len
         inferExpr inferredStringType str
         pure inferredStringType
-    {-inferExprOp  is Euler's number, which approximates to: 2.718281828459045
-    inferExprOp DoubleExp [x] = op "expr" [x] -- Base is `e`. Same as: `pow(e, x)`
-    inferExprOp DoubleLog [x] = op "log" [x] -- Base is `e`.
-    inferExprOp DoubleSin [x] = op "sin" [x]
-    inferExprOp DoubleCos [x] = op "cos" [x]
-    inferExprOp DoubleTan [x] = op "tan" [x]
-    inferExprOp DoubleASin [x] = op "asin" [x]
-    inferExprOp DoubleACos [x] = op "acos" [x]
-    inferExprOp DoubleATan [x] = op "atan" [x]
-    inferExprOp DoubleSqrt [x] = op "sqrt" [x]
-    inferExprOp DoubleFloor [x] = op "floor" [x]
-    inferExprOp DoubleCeiling [x] = op "ceiling" [x]-}
+    inferExprOp DoubleExp [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleLog [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleSin [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleCos [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleTan [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleASin [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleACos [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleATan [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleSqrt [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleFloor [x] = inferUnaryOp IDouble x
+    inferExprOp DoubleCeiling [x] = inferUnaryOp IDouble x
 
     inferExprOp (Cast IntType StringType) [x] = do
         inferExpr IInt x

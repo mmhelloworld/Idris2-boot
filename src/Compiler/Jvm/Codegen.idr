@@ -559,18 +559,29 @@ mutual
             "(IILjava/lang/String;)Ljava/lang/String;" False
         asmCast inferredStringType returnType
 
-    {-assembleExprOp returnType fc  is Euler's number, which approximates to: 2.718281828459045
-    assembleExprOp returnType fc DoubleExp [x] = op "exp" [x] -- Base is `e`. Same as: `pow(e, x)`
-    assembleExprOp returnType fc DoubleLog [x] = op "log" [x] -- Base is `e`.
-    assembleExprOp returnType fc DoubleSin [x] = op "sin" [x]
-    assembleExprOp returnType fc DoubleCos [x] = op "cos" [x]
-    assembleExprOp returnType fc DoubleTan [x] = op "tan" [x]
-    assembleExprOp returnType fc DoubleASin [x] = op "asin" [x]
-    assembleExprOp returnType fc DoubleACos [x] = op "acos" [x]
-    assembleExprOp returnType fc DoubleATan [x] = op "atan" [x]
-    assembleExprOp returnType fc DoubleSqrt [x] = op "sqrt" [x]
-    assembleExprOp returnType fc DoubleFloor [x] = op "floor" [x]
-    assembleExprOp returnType fc DoubleCeiling [x] = op "ceiling" [x]-}
+    -- `e` is Euler's number, which approximates to: 2.718281828459045
+    assembleExprOp returnType fc DoubleExp [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "exp" "(D)D" False -- Base is `e`. Same as: `pow(e, x)
+    assembleExprOp returnType fc DoubleLog [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "log" "(D)D" False -- Base is `e`.
+    assembleExprOp returnType fc DoubleSin [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "sin" "(D)D" False
+    assembleExprOp returnType fc DoubleCos [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "cos" "(D)D" False
+    assembleExprOp returnType fc DoubleTan [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "tan" "(D)D" False
+    assembleExprOp returnType fc DoubleASin [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "asin" "(D)D" False
+    assembleExprOp returnType fc DoubleACos [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "acos" "(D)D" False
+    assembleExprOp returnType fc DoubleATan [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "atan" "(D)D" False
+    assembleExprOp returnType fc DoubleSqrt [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "sqrt" "(D)D" False
+    assembleExprOp returnType fc DoubleFloor [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "floor" "(D)D" False
+    assembleExprOp returnType fc DoubleCeiling [x] = assembleExprUnaryOp returnType IDouble op x where
+        op = InvokeMethod InvokeStatic "java/lang/Math" "ceil" "(D)D" False
 
     assembleExprOp returnType fc (Cast IntType StringType) [x] = do
         assembleExpr False IInt x
