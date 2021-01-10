@@ -11,6 +11,7 @@ public final class Runtime {
     private static final ChannelIo stdout = new ChannelIo(null, Channels.newChannel(System.out));
     private static final ChannelIo stderr = new ChannelIo(null, Channels.newChannel(System.err));
     private static final ThreadLocal<Integer> ERROR_NUMBER = ThreadLocal.withInitial(() -> 0);
+    public static final long START_TIME = System.nanoTime();
     private static IdrisList programArgs;
 
     private Runtime() {

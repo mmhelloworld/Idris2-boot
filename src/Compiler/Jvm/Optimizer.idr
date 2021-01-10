@@ -49,6 +49,7 @@ thunkExpr expr = NmLam (getFC expr) (UN "$jvm$thunk") expr
 
 tySpec : NamedCExp -> Asm InferredType
 tySpec (NmCon fc (UN "Int") _ []) = pure IInt
+tySpec (NmCon fc (UN "Integer") _ []) = pure inferredBigIntegerType
 tySpec (NmCon fc (UN "String") _ []) = pure inferredStringType
 tySpec (NmCon fc (UN "Double") _ []) = pure IDouble
 tySpec (NmCon fc (UN "Char") _ []) = pure IChar
@@ -57,8 +58,8 @@ tySpec (NmCon fc (UN "void") _ []) = pure IVoid
 tySpec (NmCon fc (UN ty) _ []) = pure $ IRef ty
 tySpec (NmCon fc (NS _ n) _ [])
      = cond [(n == UN "Unit", pure IVoid)]
-          (Throw fc ("Can't pass argument of type " ++ show n ++ " to foreign function"))
-tySpec ty = Throw (getFC ty) ("Can't pass argument of type " ++ show ty ++ " to foreign function")
+          (pure inferredObjectType)
+tySpec ty = pure inferredObjectType
 
 getFArgs : NamedCExp -> Asm (List (NamedCExp, NamedCExp))
 getFArgs (NmCon fc _ (Just 0) _) = pure []
@@ -589,7 +590,8 @@ mutual
         pure inferredObjectType
     inferExtPrim _ returnType SysOS [] = pure inferredStringType
     inferExtPrim _ returnType SysCodegen [] = pure inferredStringType
-    inferExtPrim fc _ prim args = Throw fc ("Unsupported external function " ++ show prim)
+    inferExtPrim fc _ prim args = Throw fc $ "Unsupported external function " ++ show prim ++ "(" ++
+        (show $ showNamedCExp 0 <$> args) ++ ")"
 
     inferExprLamWithParameterType : Maybe (Name, InferredType) -> (parameterValueExpr: Maybe (Asm ())) ->
         NamedCExp -> Asm InferredType

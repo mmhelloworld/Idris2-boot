@@ -589,7 +589,7 @@ mutual
 
     assembleExprOp returnType fc (Cast CharType StringType) [x] = do
         assembleExpr False IChar x
-        InvokeMethod InvokeStatic "java/lang/Character" "toString" "(I)Ljava/lang/String;" False
+        InvokeMethod InvokeStatic "java/lang/Character" "toString" "(C)Ljava/lang/String;" False
         asmCast inferredStringType returnType
 
     assembleExprOp returnType fc (Cast IntType IntegerType) [x] = do
@@ -1163,7 +1163,8 @@ mutual
     jvmExtPrim _ returnType SysCodegen [] = do
         Ldc $ StringConst "\"jvm\""
         asmCast inferredStringType returnType
-    jvmExtPrim fc _ prim args = Throw fc ("Unsupported external function " ++ show prim)
+    jvmExtPrim fc _ prim args = Throw fc $ "Unsupported external function " ++ show prim ++ "(" ++
+        (show $ showNamedCExp 0 <$> args) ++ ")"
 
 assembleDefinition : {auto c : Ref Ctxt Defs} -> Name -> FC -> NamedDef -> Asm ()
 assembleDefinition idrisName fc def@(MkNmFun args expr) = do

@@ -79,29 +79,54 @@ isClockMandatory GCCPU  = Optional
 isClockMandatory GCReal = Optional
 isClockMandatory _      = Mandatory
 
-prim_clockTimeMonotonic : IO OSClock
-prim_clockTimeMonotonic = schemeCall OSClock "blodwen-clock-time-monotonic" []
+%foreign
+    "jvm:getMonotonicClock(io/github/mmhelloworld/idris2boot/runtime/IdrisClock),io/github/mmhelloworld/idris2boot/runtime/Clocks"
+prim_clockTimeMonotonic : PrimIO OSClock
+
+%foreign
+    "jvm:getUtcClock(io/github/mmhelloworld/idris2boot/runtime/IdrisClock),io/github/mmhelloworld/idris2boot/runtime/Clocks"
+prim_clockTimeUtc : PrimIO OSClock
+
+%foreign
+    "jvm:getProcessClock(io/github/mmhelloworld/idris2boot/runtime/IdrisClock),io/github/mmhelloworld/idris2boot/runtime/Clocks"
+prim_clockTimeProcess : PrimIO OSClock
+
+%foreign
+    "jvm:getThreadClock(io/github/mmhelloworld/idris2boot/runtime/IdrisClock),io/github/mmhelloworld/idris2boot/runtime/Clocks"
+prim_clockTimeThread : PrimIO OSClock
+
+%foreign
+    "jvm:getGcCpuClock(io/github/mmhelloworld/idris2boot/runtime/IdrisClock),io/github/mmhelloworld/idris2boot/runtime/Clocks"
+prim_clockTimeGcCpu : PrimIO OSClock
+
+%foreign
+    "jvm:getGcRealClock(io/github/mmhelloworld/idris2boot/runtime/IdrisClock),io/github/mmhelloworld/idris2boot/runtime/Clocks"
+prim_clockTimeGcReal : PrimIO OSClock
 
 fetchOSClock : ClockType -> IO OSClock
-fetchOSClock UTC       = schemeCall OSClock "blodwen-clock-time-utc" []
-fetchOSClock Monotonic = prim_clockTimeMonotonic
-fetchOSClock Process   = schemeCall OSClock "blodwen-clock-time-process" []
-fetchOSClock Thread    = schemeCall OSClock "blodwen-clock-time-thread" []
-fetchOSClock GCCPU     = schemeCall OSClock "blodwen-clock-time-gccpu" []
-fetchOSClock GCReal    = schemeCall OSClock "blodwen-clock-time-gcreal" []
-fetchOSClock Duration  = prim_clockTimeMonotonic
+fetchOSClock UTC       = primIO prim_clockTimeUtc
+fetchOSClock Monotonic = primIO prim_clockTimeMonotonic
+fetchOSClock Process   = primIO prim_clockTimeProcess
+fetchOSClock Thread    = primIO prim_clockTimeThread
+fetchOSClock GCCPU     = primIO prim_clockTimeGcCpu
+fetchOSClock GCReal    = primIO prim_clockTimeGcReal
+fetchOSClock Duration  = primIO prim_clockTimeMonotonic
+
+%foreign
+    "jvm:isValid(io/github/mmhelloworld/idris2boot/runtime/IdrisClock int),io/github/mmhelloworld/idris2boot/runtime/Clocks"
+prim_isValidClock : OSClock -> PrimIO Int
 
 ||| A test to determine the status of optional clocks.
 osClockValid : OSClock -> IO Int
-osClockValid clk = schemeCall Int "blodwen-is-time?" [clk]
+osClockValid clk = primIO (prim_isValidClock clk)
 
 fromOSClock : {type : ClockType} -> OSClock -> IO (Clock type)
 fromOSClock clk =
   pure $
     MkClock
       {type}
-      !(schemeCall Integer "blodwen-clock-second" [clk])
-      !(schemeCall Integer "blodwen-clock-nanosecond" [clk])
+      !(jvmStatic Integer "io/github/mmhelloworld/idris2boot/runtime/Clocks.getSeconds" [clk])
+      !(jvmStatic Integer "io/github/mmhelloworld/idris2boot/runtime/Clocks.getNanoSeconds" [clk])
 
 public export
 clockTimeReturnType : (typ : ClockType) -> Type

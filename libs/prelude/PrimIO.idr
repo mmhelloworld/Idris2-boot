@@ -72,6 +72,8 @@ data FArgList : Type where
                       (1 x : %World) -> IORes ret
 %extern prim__schemeCall : (ret : Type) -> String -> (1 args : FArgList) ->
                            (1 x : %World) -> IORes ret
+%extern prim__jvmInstance : (ret : Type) -> String -> (1 args : FArgList) -> (1 x : %World) -> IORes ret
+%extern prim__jvmStatic : (ret : Type) -> String -> (1 args : FArgList) -> (1 x : %World) -> IORes ret
 
 export %inline
 primIO : (1 fn : (1 x : %World) -> IORes a) -> IO a
@@ -88,6 +90,14 @@ schemeCall ret fn args = primIO (prim__schemeCall ret fn args)
 export %inline
 cCall : (ret : Type) -> String -> FArgList -> IO ret
 cCall ret fn args = primIO (prim__cCall ret fn args)
+
+export %inline
+jvmStatic : (ret : Type) -> String -> (1 args : FArgList) -> IO ret
+jvmStatic ret fn args = primIO (prim__jvmStatic ret fn args)
+
+export %inline
+jvmInstance : (ret : Type) -> String -> (1 args : FArgList) -> IO ret
+jvmInstance ret fn args = primIO (prim__jvmInstance ret fn args)
 
 %foreign "C:idris2_isNull, libidris2_support"
          "jvm:isNull,io/github/mmhelloworld/idris2boot/runtime/Objects"
