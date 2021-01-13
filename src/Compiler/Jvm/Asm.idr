@@ -16,6 +16,7 @@ import Compiler.Jvm.Jname
 import Compiler.Jvm.Jvar
 import Compiler.Jvm.ShowUtil
 
+import IdrisJvm.System
 import IdrisJvm.IO
 import Java.Lang
 import Java.Util
@@ -927,10 +928,37 @@ getThunkValueType ty = if ty == intThunkType then IInt
 isThunkType : InferredType -> Bool
 isThunkType ty = ty == intThunkType || ty == doubleThunkType || ty == thunkType
 
-shouldDebug : Bool
-shouldDebug =
+shouldDebugAsm : Bool
+shouldDebugAsm =
     let shouldDebugProperty = unsafePerformIO $ System.getPropertyWithDefault "IDRIS_JVM_DEBUG_ASM" ""
     in shouldDebugProperty == "true"
+
+shouldDebug : Bool
+shouldDebug =
+    let shouldDebugProperty = unsafePerformIO $ System.getPropertyWithDefault "IDRIS_JVM_DEBUG" ""
+    in shouldDebugProperty == "true"
+
+namespace LocalDateTime
+    LocalDateTimeClass : JVM_NativeTy
+    LocalDateTimeClass = Class "java/time/LocalDateTime"
+
+    LocalDateTime : Type
+    LocalDateTime = JVM_Native LocalDateTimeClass
+
+    export
+    currentTimeString : JVM_IO String
+    currentTimeString = do
+        now <- invokeStatic LocalDateTimeClass "now" (JVM_IO LocalDateTime)
+        invokeInstance "toString" (LocalDateTime -> JVM_IO String) now
+
+export
+debug : Lazy String -> Asm ()
+debug msg =
+    if shouldDebug
+        then do
+            t <- LiftIo currentTimeString
+            Debug $ t ++ ": " ++ msg
+        else Pure ()
 
 runAsm : AsmState -> Asm a -> Core (a, AsmState)
 runAsm state Aaload = assemble state $ invokeInstance "aaload" (Assembler -> JVM_IO ()) (assembler state)

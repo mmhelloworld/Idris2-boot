@@ -438,6 +438,7 @@ mutual
     assembleExprOp returnType fc (Div IntType) [x, y] = assembleExprBinaryOp returnType IInt Idiv x y
     assembleExprOp returnType fc (Mod IntType) [x, y] = assembleExprBinaryOp returnType IInt Irem x y
     assembleExprOp returnType fc (Neg IntType) [x] = assembleExprUnaryOp returnType IInt Ineg x
+
     assembleExprOp returnType fc (ShiftL IntType) [x, y] = assembleExprBinaryOp returnType IInt Ishl x y
     assembleExprOp returnType fc (ShiftR IntType) [x, y] = assembleExprBinaryOp returnType IInt Ishr x y
     assembleExprOp returnType fc (BAnd IntType) [x, y] = assembleExprBinaryOp returnType IInt Iand x y
@@ -465,9 +466,30 @@ mutual
                 "(Ljava/math/BigInteger;)Ljava/math/BigInteger;" False
         in assembleExprBinaryOp returnType inferredBigIntegerType op x y
     assembleExprOp returnType fc (Neg IntegerType) [x] =
-        let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "negate"
-                "()Ljava/math/BigInteger;" False
+        let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "negate" "()Ljava/math/BigInteger;" False
         in assembleExprUnaryOp returnType inferredBigIntegerType op x
+    assembleExprOp returnType fc (ShiftL IntegerType) [x, y] = do
+        let op = do
+            InvokeMethod InvokeVirtual "java/math/BigInteger" "intValueExact" "()I" False
+            InvokeMethod InvokeVirtual "java/math/BigInteger" "shiftLeft" "(I)Ljava/math/BigInteger;" False
+        assembleExprBinaryOp returnType inferredBigIntegerType op x y
+    assembleExprOp returnType fc (ShiftR IntegerType) [x, y] = do
+        let op = do
+            InvokeMethod InvokeVirtual "java/math/BigInteger" "intValueExact" "()I" False
+            InvokeMethod InvokeVirtual "java/math/BigInteger" "shiftRight" "(I)Ljava/math/BigInteger;" False
+        assembleExprBinaryOp returnType inferredBigIntegerType op x y
+    assembleExprOp returnType fc (BAnd IntegerType) [x, y] = do
+        let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "and"
+            "(Ljava/math/BigInteger;)Ljava/math/BigInteger;" False
+        assembleExprBinaryOp returnType inferredBigIntegerType op x y
+    assembleExprOp returnType fc (BOr IntegerType) [x, y] = do
+        let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "or"
+            "(Ljava/math/BigInteger;)Ljava/math/BigInteger;" False
+        assembleExprBinaryOp returnType inferredBigIntegerType op x y
+    assembleExprOp returnType fc (BXOr IntegerType) [x, y] = do
+        let op = InvokeMethod InvokeVirtual "java/math/BigInteger" "xor"
+            "(Ljava/math/BigInteger;)Ljava/math/BigInteger;" False
+        assembleExprBinaryOp returnType inferredBigIntegerType op x y
 
     assembleExprOp returnType fc (Add DoubleType) [x, y] = assembleExprBinaryOp returnType IDouble Dadd x y
     assembleExprOp returnType fc (Sub DoubleType) [x, y] = assembleExprBinaryOp returnType IDouble Dsub x y
@@ -701,8 +723,10 @@ mutual
         (parameterName : Maybe Name) -> NamedCExp -> Asm ()
     assembleSubMethodWithScope isTailCall returnType (Just value) (Just name) body = do
         parentScope <- getScope !getCurrentScopeIndex
-        parameterValueVariableIndex <- newDynamicVariableIndex
-        let parameterValueVariable = jvmSimpleName name ++ show parameterValueVariableIndex
+        let shouldGenerateVariable = name == UN extractedMethodArgumentName
+        let parameterValueVariable =
+            if shouldGenerateVariable then jvmSimpleName name ++ show !newDynamicVariableIndex
+            else jvmSimpleName name
         withScope $ assembleSubMethod isTailCall returnType (Just (assembleValue parentScope parameterValueVariable))
             (Just $ UN parameterValueVariable) parentScope
             (substituteVariableSubMethodBody (NmLocal (getFC body) $ UN parameterValueVariable) body)
@@ -1198,6 +1222,7 @@ assembleDefinition idrisName fc def@(MkNmFun args expr) = do
         lineNumberLabels = SortedMap.empty }
     updateCurrentFunction $ record { dynamicVariableCounter = 0 }
     let optimizedExpr = optimizedBody function
+    debug $ "Assembling " ++ show idrisName ++ "(" ++ show args ++ ")"
     CreateMethod [Public, Static] fileName declaringClassName methodName descriptor Nothing Nothing [] []
     MethodCodeStart
     CreateLabel methodStartLabel
@@ -1244,7 +1269,7 @@ createMainMethod = do
     MethodCodeEnd
 
 asm : AsmState -> Asm a -> Core (a, AsmState)
-asm = if shouldDebug then mockRunAsm else runAsm
+asm = if shouldDebugAsm then mockRunAsm else runAsm
 
 lookupAndInfer : SortedMap Name (FC, NamedDef) -> Name -> Asm ()
 lookupAndInfer fcAndDefinitionsByName name = case SortedMap.lookup name fcAndDefinitionsByName of
@@ -1268,6 +1293,9 @@ compileToJvmBytecode c outputDirectory tm = do
             map (\(name, fc, def) => (name, fc, def)) ndefs)
     let definitionsByName = SortedMap.fromList
         ((\(name, fc, def) => (name, def)) <$> SortedMap.toList fcAndDefinitionsByName)
+    coreLift $ when shouldDebug $ do
+        timeString <- currentTimeString
+        putStrLn (timeString ++ ": Analyzing dependencies")
     let orderedFunctions = traverseDepthFirst $ buildFunctionTreeMain $ definitionsByName
     _ <- asm asmState $ do
         traverse (lookupAndInfer fcAndDefinitionsByName) orderedFunctions

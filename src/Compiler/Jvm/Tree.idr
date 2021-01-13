@@ -1,9 +1,9 @@
 module Compiler.Jvm.Tree
 
-%access public export
-
+public export
 data Tree a = Node a (List (Tree a))
 
+export
 displayTree : (a -> String) -> Tree a -> String
 displayTree show tree = unlines . reverse $ go [] [] 0 tree where
     indent : Nat -> String
@@ -23,6 +23,7 @@ displayTree show tree = unlines . reverse $ go [] [] 0 tree where
 implementation Show a => Show (Tree a) where
   show tree = displayTree show tree
 
+export
 traverseDepthFirst : Tree a -> List a
 traverseDepthFirst tree = go [] [] tree where
   go : (acc: List a) -> (stack: List (Tree a)) -> Tree a -> List a

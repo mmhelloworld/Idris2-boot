@@ -20,8 +20,6 @@ import Compiler.Jvm.ExtPrim
 import Compiler.Jvm.ShowUtil
 import Compiler.Jvm.Foreign
 
-%access public export
-
 mutual
     hasTailCall : (predicate: Name -> Bool) -> NamedCExp -> Bool
     hasTailCall predicate (NmLet _ _ _ expr) = hasTailCall predicate expr
@@ -47,6 +45,7 @@ mutual
 thunkExpr : NamedCExp -> NamedCExp
 thunkExpr expr = NmLam (getFC expr) (UN "$jvm$thunk") expr
 
+export
 tySpec : NamedCExp -> Asm InferredType
 tySpec (NmCon fc (UN "Int") _ []) = pure IInt
 tySpec (NmCon fc (UN "Integer") _ []) = pure inferredBigIntegerType
@@ -61,6 +60,7 @@ tySpec (NmCon fc (NS _ n) _ [])
           (pure inferredObjectType)
 tySpec ty = pure inferredObjectType
 
+export
 getFArgs : NamedCExp -> Asm (List (NamedCExp, NamedCExp))
 getFArgs (NmCon fc _ (Just 0) _) = pure []
 getFArgs (NmCon fc _ (Just 1) [ty, val, rest]) = pure $ (ty, val) :: !(getFArgs rest)
@@ -70,6 +70,7 @@ getLineNumbers : FilePos -> FilePos -> (Int, Int)
 getLineNumbers (lineStart, _) (lineEnd, colEnd) =
     (lineStart + 1, if colEnd == 1 then lineEnd else lineEnd + 1)
 
+export
 getSourceLocation : NamedCExp -> (String, Int, Int)
 getSourceLocation expr = case getFC expr of
     EmptyFC => case expr of
@@ -79,11 +80,13 @@ getSourceLocation expr = case getFC expr of
     (MkFC fileName startPos endPos) =>
         (fileName, getLineNumbers startPos endPos)
 
+export
 getSourceLocationFromFc : FC -> (String, Int, Int)
 getSourceLocationFromFc EmptyFC = ("Main.idr", 1, 1)
 getSourceLocationFromFc (MkFC fileName startPos endPos) = (fileName, getLineNumbers startPos endPos)
 
 mutual
+    export
     used : String -> NamedCExp -> Bool
     used n (NmLocal fc var) = n == jvmSimpleName var
     used n (NmRef _ _) = False
@@ -109,13 +112,17 @@ mutual
     usedConst : String -> NamedConstAlt -> Bool
     usedConst n (MkNConstAlt _ sc) = used n sc
 
+export
+extractedMethodArgumentName : String
+extractedMethodArgumentName = "$jvm$arg"
+
 mutual
     liftToLambda : (isTailPosition: Bool) -> NamedCExp -> NamedCExp
     liftToLambda False (NmLet fc var value sc) = NmApp fc (NmLam fc var sc) [value]
     liftToLambda True (NmLet fc var value sc) = NmLet fc var (liftToLambda False value) (liftToLambda True sc)
     liftToLambda _ expr@(NmConCase _ sc [] Nothing) = expr
     liftToLambda False (NmConCase fc sc alts def) =
-        let var = UN "$jvm$arg"
+        let var = UN extractedMethodArgumentName
             liftedAlts = liftToLambdaCon <$> alts
             liftedDef = liftToLambda True <$> def
         in NmApp fc (NmLam fc var (NmConCase fc (NmLocal fc var) liftedAlts liftedDef)) [liftToLambda False sc]
@@ -124,7 +131,7 @@ mutual
         NmConCase fc (liftToLambda False sc) (liftToLambdaCon <$> alts) (liftToLambda True <$> def)
     liftToLambda _ expr@(NmConstCase fc sc [] Nothing) = expr
     liftToLambda False (NmConstCase fc sc alts def) =
-        let var = UN "$jvm$arg"
+        let var = UN extractedMethodArgumentName
             liftedAlts = liftToLambdaConst <$> alts
             liftedDef = liftToLambda True <$> def
         in NmApp fc (NmLam fc var $ NmConstCase fc (NmLocal fc var) liftedAlts liftedDef) [liftToLambda False sc]
@@ -355,37 +362,45 @@ withInferenceLambdaScope lineNumberStart lineNumberEnd expr op = do
     exitInferenceScope scope
     Pure result
 
+public export
 data LambdaType = ThunkLambda | DelayedLambda | FunctionLambda
 
+export
 Eq LambdaType where
     ThunkLambda == ThunkLambda = True
     DelayedLambda == DelayedLambda = True
     FunctionLambda == FunctionLambda = True
     _ == _ = False
 
+export
 getLambdaType : (parameterName: Maybe Name) -> LambdaType
 getLambdaType (Just (UN "$jvm$thunk")) = ThunkLambda
 getLambdaType Nothing = DelayedLambda
 getLambdaType _ = FunctionLambda
 
+export
 getLambdaInterfaceMethodName : LambdaType -> String
 getLambdaInterfaceMethodName FunctionLambda = "apply"
 getLambdaInterfaceMethodName _ = "evaluate"
 
+export
 getSamDesc : LambdaType -> String
 getSamDesc ThunkLambda = "()" ++ getJvmTypeDescriptor thunkType
 getSamDesc DelayedLambda = "()Ljava/lang/Object;"
 getSamDesc FunctionLambda = "(Ljava/lang/Object;)Ljava/lang/Object;"
 
+export
 getLambdaInterfaceType : LambdaType -> InferredType -> InferredType
 getLambdaInterfaceType ThunkLambda returnType = getThunkType returnType
 getLambdaInterfaceType DelayedLambda returnType = delayedType
 getLambdaInterfaceType FunctionLambda returnType = inferredLambdaType
 
+export
 getLambdaImplementationMethodReturnType : LambdaType -> InferredType
 getLambdaImplementationMethodReturnType ThunkLambda = thunkType
 getLambdaImplementationMethodReturnType _ = inferredObjectType
 
+export
 getConstantType : List NamedConstAlt -> Asm InferredType
 getConstantType [] = Throw emptyFC "Unknown constant switch type"
 getConstantType ((MkNConstAlt constant _) :: _) = case constant of
@@ -395,6 +410,7 @@ getConstantType ((MkNConstAlt constant _) :: _) = case constant of
     BI _ => Pure inferredBigIntegerType
     unsupportedConstant => Throw emptyFC $ "Unsupported constant switch " ++ show unsupportedConstant
 
+export
 isTypeConst : TT.Constant -> Bool
 isTypeConst IntType     = True
 isTypeConst IntegerType = True
@@ -404,6 +420,7 @@ isTypeConst DoubleType  = True
 isTypeConst WorldType   = True
 isTypeConst _           = False
 
+export
 getIntConstantValue : FC -> TT.Constant -> Asm Int
 getIntConstantValue _ (I i) = Pure i
 getIntConstantValue _ (Ch c) = Pure $ ord c
@@ -417,17 +434,18 @@ sortConCases alts = sortBy (comparing getTag) alts where
     getTag : NamedConAlt -> Int
     getTag (MkNConAlt _ tag _ _) = fromMaybe 0 tag
 
+export
 isTypeCase : NamedConAlt -> Bool
 isTypeCase (MkNConAlt _ Nothing _ _) = True
 isTypeCase _ = False
 
+export
 substituteVariableSubMethodBody : NamedCExp -> NamedCExp -> NamedCExp
 substituteVariableSubMethodBody variable (NmConCase fc _ alts def) = NmConCase fc variable alts def
 substituteVariableSubMethodBody variable (NmConstCase fc _ alts def) = NmConstCase fc variable alts def
 substituteVariableSubMethodBody _ expr = expr
 
 mutual
-    public export
     inferExpr : InferredType -> NamedCExp -> Asm InferredType
     inferExpr exprTy (NmDelay _ expr) = inferExprLam Nothing Nothing expr
     inferExpr exprTy expr@(NmLocal _ var) = addVariableType (jvmSimpleName var) exprTy
@@ -623,19 +641,25 @@ mutual
             (NmConstCase _ _ alts _) => getConstantType alts
             (NmConCase _ _ _ _) => Pure idrisObjectType
             _ => Pure IUnknown
-        let generatedVariableName = jvmSimpleName name ++ show !newDynamicVariableIndex
-        let valueExpr = NmLocal (getFC expr) (UN generatedVariableName)
+        let shouldGenerateVariable = name == UN extractedMethodArgumentName
+        let generatedJvmVariableName =
+            if shouldGenerateVariable then jvmSimpleName name ++ show !newDynamicVariableIndex
+            else jvmSimpleName name
+        let generatedVariableName =
+            if shouldGenerateVariable then UN generatedJvmVariableName
+            else name
+        let valueExpr = NmLocal (getFC expr) generatedVariableName
         parentScope <- getScope !getCurrentScopeIndex
-        inferExprLamWithParameterType (Just (UN generatedVariableName, valueType))
-            (Just (inferValue parentScope generatedVariableName valueType))
+        inferExprLamWithParameterType (Just (generatedVariableName, valueType))
+            (Just (inferValue parentScope shouldGenerateVariable generatedJvmVariableName valueType))
             (substituteVariableSubMethodBody valueExpr expr)
       where
-        inferValue : Scope -> String -> InferredType -> Asm ()
-        inferValue enclosingScope variableName valueType = do
+        inferValue : Scope -> Bool -> String -> InferredType -> Asm ()
+        inferValue enclosingScope shouldGenerateVariable variableName valueType = do
             lambdaScopeIndex <- getCurrentScopeIndex
             updateCurrentScopeIndex (index enclosingScope)
             inferExpr valueType value
-            createVariable variableName
+            when shouldGenerateVariable $ createVariable variableName
             addVariableType variableName valueType
             updateCurrentScopeIndex lambdaScopeIndex
     inferExprLam _ parameterName expr =
@@ -708,6 +732,11 @@ mutual
     inferExprOp (Div IntegerType) [x, y] = inferBinaryOp inferredBigIntegerType x y
     inferExprOp (Mod IntegerType) [x, y] = inferBinaryOp inferredBigIntegerType x y
     inferExprOp (Neg IntegerType) [x] = inferUnaryOp inferredBigIntegerType x
+    inferExprOp (ShiftL IntegerType) [x, y] = inferBinaryOp inferredBigIntegerType x y
+    inferExprOp (ShiftR IntegerType) [x, y] = inferBinaryOp inferredBigIntegerType x y
+    inferExprOp (BAnd IntegerType) [x, y] = inferBinaryOp inferredBigIntegerType x y
+    inferExprOp (BOr IntegerType) [x, y] = inferBinaryOp inferredBigIntegerType x y
+    inferExprOp (BXOr IntegerType) [x, y] = inferBinaryOp inferredBigIntegerType x y
 
     inferExprOp (Add DoubleType) [x, y] = inferBinaryOp IDouble x y
     inferExprOp (Sub DoubleType) [x, y] = inferBinaryOp IDouble x y
@@ -841,12 +870,7 @@ optimize tailCallCategory expr = do
     if hasNonSelfTailCall tailCallCategory then trampolineExpression inlinedAndTailRecursionMarkedExpr
     else Pure inlinedAndTailRecursionMarkedExpr
 
-resultVariablePrefix : String
-resultVariablePrefix = "$jvm$res"
-
-tailRecursionLoopVariablePrefix : String
-tailRecursionLoopVariablePrefix = "$jvm$rec$loop"
-
+export
 inferDef : Name -> FC -> NamedDef -> Asm ()
 inferDef idrisName fc (MkNmFun args expr) = do
         let jname = jvmName idrisName
@@ -860,6 +884,7 @@ inferDef idrisName fc (MkNmFun args expr) = do
         setCurrentFunction function
         updateState $ record { functions $= SortedMap.insert jname function }
         optimizedExpr <- optimize tailCallCategory expr
+        debug $ "Inferring " ++ show idrisName ++ "(" ++ show args ++ ")"
         updateCurrentFunction $ record { optimizedBody = optimizedExpr }
 
         resetScope

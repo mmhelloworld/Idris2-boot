@@ -22,9 +22,11 @@ public final class Runtime {
     }
 
     public static void setProgramArgs(String[] args) {
-        // "java" as the executable name for the first argument to conform to Idris' getArgs function
-        programArgs = IdrisList.fromIterable(Stream.concat(Stream.of("java"), Stream.of(args))
-            .collect(toList()));
+        if (programArgs == null) {
+            // "java" as the executable name for the first argument to conform to Idris' getArgs function
+            programArgs = IdrisList.fromIterable(Stream.concat(Stream.of("java"), Stream.of(args))
+                .collect(toList()));
+        }
     }
 
     public static ChannelIo getStdin() {
