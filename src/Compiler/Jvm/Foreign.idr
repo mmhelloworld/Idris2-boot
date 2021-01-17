@@ -14,7 +14,6 @@ import Data.Vect
 
 import Compiler.Jvm.InferredType
 import Compiler.Jvm.Jname
-import Compiler.Jvm.Jvar
 import Compiler.Jvm.Asm
 import Compiler.Jvm.ExtPrim
 import Compiler.Jvm.ShowUtil
@@ -143,9 +142,9 @@ findJvmDescriptor fc name (descriptor :: descriptors) = case parseCC descriptor 
     Just ("jvm", descriptorParts) => Pure descriptorParts
     _ => findJvmDescriptor fc name descriptors
 
-getArgumentIndices : Nat -> List String -> SortedMap String Nat
-getArgumentIndices Z _ = SortedMap.empty
-getArgumentIndices (S lastArgIndex) args = SortedMap.fromList $ List.zip args [0 .. lastArgIndex]
+getArgumentIndices : Int -> List String -> SortedMap String Int
+getArgumentIndices 0 _ = SortedMap.empty
+getArgumentIndices argIndex args = SortedMap.fromList $ List.zip args [0 .. argIndex - 1]
 
 getPrimMethodName : String -> String
 getPrimMethodName name =
@@ -166,9 +165,9 @@ inferForeign idrisName fc foreignDescriptors argumentTypes returnType = do
     let jvmArgumentTypes = getInferredType <$> jvmArgumentTypes -- TODO: Do not discard Java lambda type descriptor
     let inferredFunctionType = MkInferredFunctionType jvmReturnType jvmArgumentTypes
     scopeIndex <- newScopeIndex
-    let arity = length jvmArgumentTypes
+    let arity = the Int $ cast $ length jvmArgumentTypes
     let argumentNames =
-       if arity > 0 then (\argumentIndex => "arg" ++ show argumentIndex) <$> [0 .. Nat.pred arity] else []
+       if arity > 0 then (\argumentIndex => "arg" ++ show argumentIndex) <$> [0 .. arity - 1] else []
     let argIndices = getArgumentIndices arity argumentNames
     let argumentTypesByName = SortedMap.fromList $ List.zip argumentNames jvmArgumentTypes
     let tailCallCategory = MkTailCallCategory False False

@@ -10,12 +10,12 @@ import Compiler.Jvm.InferredType
 
 %access public export
 
-getLocTy : SortedMap Nat InferredType -> Nat -> InferredType
+getLocTy : SortedMap Int InferredType -> Int -> InferredType
 getLocTy tys varIndex = fromMaybe IUnknown $ SortedMap.lookup varIndex tys
 
-getVarIndex : SortedMap Nat InferredType -> Nat -> Nat
+getVarIndex : SortedMap Int InferredType -> Int -> Int
 getVarIndex types index = go 0 0 where
-  go : Nat -> Nat -> Nat
+  go : Int -> Int -> Int
   go pos currVarIndex =
     if currVarIndex == index then
         pos
@@ -25,7 +25,7 @@ getVarIndex types index = go 0 0 where
             nextPos = if isTwoWordTy then pos + 2 else succ pos
         in go nextPos (succ currVarIndex)
 
-opWithWordSize : SortedMap Nat InferredType -> (Nat -> Asm ()) -> Nat -> Asm ()
+opWithWordSize : SortedMap Int InferredType -> (Int -> Asm ()) -> Int -> Asm ()
 opWithWordSize types op var = do
     let newPos = getVarIndex types var
     op newPos
@@ -218,66 +218,66 @@ asmCast IVoid IVoid = Pure ()
 asmCast IVoid (IRef _) = Aconstnull
 asmCast ty1 ty2 = Throw emptyFC $ "Cannot convert from " ++ show ty1 ++ " to " ++ show ty2
 
-loadAndBox : (Nat -> Asm ()) -> Asm () -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndBox : (Int -> Asm ()) -> Asm () -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndBox loadOp boxOp sourceLocTys var = let op = \index => do loadOp index; boxOp
                                            in opWithWordSize sourceLocTys op var
 
-loadAndBoxBool : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndBoxBool : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndBoxBool ty = loadAndBox Iload (if ty == intThunkType then thunkInt else boxBool)
 
-loadAndBoxByte : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndBoxByte : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndBoxByte ty = loadAndBox Iload (if ty == intThunkType then thunkInt else boxByte)
 
-loadAndBoxChar : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndBoxChar : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndBoxChar ty = loadAndBox Iload (if ty == intThunkType then thunkInt else boxChar)
 
-loadAndBoxShort : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndBoxShort : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndBoxShort ty = loadAndBox Iload (if ty == intThunkType then thunkInt else boxShort)
 
-loadAndBoxInt : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndBoxInt : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndBoxInt ty = loadAndBox Iload (if ty == intThunkType then thunkInt else boxInt)
 
-loadAndBoxLong : SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndBoxLong : SortedMap Int InferredType -> Int -> Asm ()
 loadAndBoxLong = loadAndBox Lload boxLong
 
-loadAndBoxFloat : SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndBoxFloat : SortedMap Int InferredType -> Int -> Asm ()
 loadAndBoxFloat = loadAndBox Fload boxFloat
 
-loadAndBoxDouble : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndBoxDouble : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndBoxDouble ty = loadAndBox Dload (if ty == doubleThunkType then thunkDouble else boxDouble)
 
-loadAndUnboxBool : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndUnboxBool : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndUnboxBool ty sourceLocTys var =
     let loadInstr = \index => do Aload index; if ty == intThunkType then unwrapIntThunk else boolObjToBool
     in opWithWordSize sourceLocTys loadInstr var
 
-loadAndUnboxByte : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndUnboxByte : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndUnboxByte ty sourceLocTys var =
     let loadInstr = \index => do Aload index; if ty == intThunkType then unwrapIntThunk else objToByte
     in opWithWordSize sourceLocTys loadInstr var
 
-loadAndUnboxChar : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndUnboxChar : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndUnboxChar ty sourceLocTys var =
     let loadInstr = \index => do Aload index; if ty == intThunkType then unwrapIntThunk else charObjToChar
     in opWithWordSize sourceLocTys loadInstr var
 
-loadAndUnboxShort : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndUnboxShort : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndUnboxShort ty sourceLocTys var =
     let loadInstr = \index => do Aload index; if ty == intThunkType then unwrapIntThunk else objToShort
     in opWithWordSize sourceLocTys loadInstr var
 
-loadAndUnboxInt : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndUnboxInt : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndUnboxInt ty sourceLocTys var =
     let loadInstr = \index => do Aload index; if ty == intThunkType then unwrapIntThunk else objToInt
     in opWithWordSize sourceLocTys loadInstr var
 
-loadAndUnboxDouble : InferredType -> SortedMap Nat InferredType -> Nat -> Asm ()
+loadAndUnboxDouble : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndUnboxDouble ty sourceLocTys var =
     let loadInstr = \index => do Aload index; if ty == doubleThunkType then unwrapDoubleThunk else objToDouble
     in opWithWordSize sourceLocTys loadInstr var
 
 public export
-loadVar : SortedMap Nat InferredType -> (srcTy: InferredType) -> (targetTy: InferredType) -> Nat -> Asm ()
+loadVar : SortedMap Int InferredType -> (srcTy: InferredType) -> (targetTy: InferredType) -> Int -> Asm ()
 loadVar sourceLocTys IBool IBool var = opWithWordSize sourceLocTys Iload var
 loadVar sourceLocTys IByte IByte var = opWithWordSize sourceLocTys Iload var
 loadVar sourceLocTys IChar IChar var  = opWithWordSize sourceLocTys Iload var
@@ -344,31 +344,31 @@ loadVar sourceLocTys ty1@(IRef _) ty2@(IRef _) var =
 loadVar sourceLocTys ty1 ty2 var = Throw emptyFC ("Cannot load variable " ++ show var ++ " of type " ++ show ty1 ++
     " to type " ++ show ty2)
 
-loadVars : SortedMap Nat InferredType -> SortedMap Nat InferredType -> List Nat -> Asm ()
+loadVars : SortedMap Int InferredType -> SortedMap Int InferredType -> List Int -> Asm ()
 loadVars _ _ []  = pure ()
 loadVars sourceLocTys targetLocTys vars@(_ :: _)  =
-        let nVars = length vars
+        let nVars = the Int $ cast $ length vars
             targetVarTys = if nVars > 0 then getLocTy targetLocTys <$> [0 .. (nVars - 1)] else []
             sourceVarTys = getLocTy sourceLocTys <$> vars
             varsWithSourceTargetTys = List.zip vars $ List.zip sourceVarTys targetVarTys
         in go varsWithSourceTargetTys
     where
-        go : List (Nat, InferredType, InferredType) -> Asm ()
+        go : List (Int, InferredType, InferredType) -> Asm ()
         go [] = pure ()
         go ((var, srcTy, targetTy) :: vs) = do
           loadVar sourceLocTys srcTy targetTy var
           go vs
 
-storeVarWithWordSize : (Nat -> Asm ()) -> Nat -> Asm ()
+storeVarWithWordSize : (Int -> Asm ()) -> Int -> Asm ()
 storeVarWithWordSize storeOp var = do
     types <- getVariableTypes
     opWithWordSize types storeOp var
 
-boxStore : Asm () -> Nat -> Asm ()
+boxStore : Asm () -> Int -> Asm ()
 boxStore boxOp var = storeVarWithWordSize (\index => do boxOp; Astore index) var
 
 public export
-storeVar : (srcTy: InferredType) -> (targetTy: InferredType) -> Nat -> Asm ()
+storeVar : (srcTy: InferredType) -> (targetTy: InferredType) -> Int -> Asm ()
 storeVar IBool IBool     var = do types <- getVariableTypes; opWithWordSize types Istore var
 storeVar IByte IByte     var = do types <- getVariableTypes; opWithWordSize types Istore var
 storeVar IChar IChar     var = do types <- getVariableTypes; opWithWordSize types Istore var

@@ -10,11 +10,11 @@ import Core.TT
 
 import Data.Bool.Extra
 import Data.SortedMap
+import Data.SortedSet
 import Data.Vect
 
 import Compiler.Jvm.InferredType
 import Compiler.Jvm.Jname
-import Compiler.Jvm.Jvar
 import Compiler.Jvm.Asm
 import Compiler.Jvm.ExtPrim
 import Compiler.Jvm.ShowUtil
@@ -153,38 +153,114 @@ mutual
     liftToLambdaConst (MkNConstAlt constant body) = MkNConstAlt constant (liftToLambda True body)
 
 mutual
-    doGetUsageCount : Nat -> Name -> NamedCExp -> Nat
-    doGetUsageCount count name (NmLocal fc var) = if name == var then count + 1 else count
-    doGetUsageCount count name (NmRef _ _) = count
-    doGetUsageCount count name (NmLam _ _ sc) = doGetUsageCount count name sc
-    doGetUsageCount count name (NmLet _ var value sc) =
-        let usageCountInValue = doGetUsageCount count name value
-        in doGetUsageCount usageCountInValue name sc
-    doGetUsageCount count name (NmApp _ (NmRef _ _) args) = foldl (\acc, arg => doGetUsageCount acc name arg) count args
-    doGetUsageCount count name (NmApp _ f args) =
-        let lambdaExprUsageCount = doGetUsageCount count name f
-        in foldl (\acc, arg => doGetUsageCount acc name arg) lambdaExprUsageCount args
-    doGetUsageCount count name (NmCon _ _ _ args) = foldl (\acc, arg => doGetUsageCount acc name arg) count args
-    doGetUsageCount count name (NmOp _ _ args) = foldl (\acc, arg => doGetUsageCount acc name arg) count args
-    doGetUsageCount count name (NmExtPrim _ _ args) = foldl (\acc, arg => doGetUsageCount acc name arg) count args
-    doGetUsageCount count name (NmForce _ t) = doGetUsageCount count name t
-    doGetUsageCount count name (NmDelay _ t) = doGetUsageCount count name t
-    doGetUsageCount count name (NmConCase _ sc alts def) =
-        let altsCount = foldl (\acc, alt => doGetUsageCountCon acc name alt) (doGetUsageCount count name sc) alts
-        in maybe altsCount (doGetUsageCount altsCount name) def
-    doGetUsageCount count name (NmConstCase _ sc alts def) =
-        let altsCount = foldl (\acc, alt => doGetUsageCountConst acc name alt) (doGetUsageCount count name sc) alts
-        in maybe altsCount (doGetUsageCount altsCount name) def
-    doGetUsageCount count name _ = count
+    goHasSingleUsage : Int -> Name -> NamedCExp -> Int
+    goHasSingleUsage count name expr =
+        if count > 1 then count
+        else go expr
+      where
+        go : NamedCExp -> Int
+        go (NmLocal fc var) = if name == var then count + 1 else count
+        go (NmLam _ _ sc) = goHasSingleUsage count name sc
+        go (NmLet _ var value sc) =
+            let usageCountInValue = goHasSingleUsage count name value
+            in goHasSingleUsage usageCountInValue name sc
+        go (NmApp _ (NmRef _ _) args) = goHasSingleUsageExpressions count name args
+        go (NmApp _ f args) =
+            let lambdaExprUsageCount = goHasSingleUsage count name f
+            in goHasSingleUsageExpressions lambdaExprUsageCount name args
+        go (NmCon _ _ _ args) = goHasSingleUsageExpressions count name args
+        go (NmOp _ _ args) = goHasSingleUsageExpressions count name $ toList args
+        go (NmExtPrim _ _ args) = goHasSingleUsageExpressions count name args
+        go (NmForce _ t) = goHasSingleUsage count name t
+        go (NmDelay _ t) = goHasSingleUsage count name t
+        go (NmConCase _ sc alts def) =
+            let altsCount = goHasSingleUsageCon (goHasSingleUsage count name sc) name alts
+            in maybe altsCount (goHasSingleUsage altsCount name) def
+        go (NmConstCase _ sc alts def) =
+            let altsCount = goHasSingleUsageConst (goHasSingleUsage count name sc) name alts
+            in maybe altsCount (goHasSingleUsage altsCount name) def
+        go _ = count
 
-    doGetUsageCountCon : Nat -> Name -> NamedConAlt -> Nat
-    doGetUsageCountCon count name (MkNConAlt _ _ _ sc) = doGetUsageCount count name sc
+    goHasSingleUsageExpressions : Int -> Name -> List NamedCExp -> Int
+    goHasSingleUsageExpressions count name expressions =
+        if count > 1 then count
+        else case expressions of
+            [] => count
+            (expr :: rest) => goHasSingleUsageExpressions (goHasSingleUsage count name expr) name rest
 
-    doGetUsageCountConst : Nat -> Name -> NamedConstAlt -> Nat
-    doGetUsageCountConst count name (MkNConstAlt _ sc) = doGetUsageCount count name sc
+    goHasSingleUsageCon : Int -> Name -> List NamedConAlt -> Int
+    goHasSingleUsageCon count name alts =
+        if count > 1 then count
+        else case alts of
+            [] => count
+            ((MkNConAlt _ _ _ sc) :: rest) => goHasSingleUsageCon (goHasSingleUsage count name sc) name rest
 
-getUsageCount : Name -> NamedCExp -> Nat
-getUsageCount name expr = doGetUsageCount 0 name expr
+    goHasSingleUsageConst : Int -> Name -> List NamedConstAlt -> Int
+    goHasSingleUsageConst count name alts =
+        if count > 1 then count
+        else case alts of
+            [] => count
+            ((MkNConstAlt _ sc) :: rest) => goHasSingleUsageConst (goHasSingleUsage count name sc) name rest
+
+hasSingleUsage : Name -> NamedCExp -> Bool
+hasSingleUsage name expr = goHasSingleUsage 0 name expr == 1
+
+mutual
+    doGetFreeVariables : SortedSet String -> SortedSet String -> NamedCExp -> SortedSet String
+    doGetFreeVariables freeVariables boundVariables (NmLocal fc var) =
+        let varName = jvmSimpleName var
+        in
+            if SortedSet.contains varName boundVariables then freeVariables
+            else SortedSet.insert varName freeVariables
+    doGetFreeVariables freeVariables boundVariables (NmLam _ parameterName body) =
+        doGetFreeVariables freeVariables (SortedSet.insert (jvmSimpleName parameterName) boundVariables) body
+    doGetFreeVariables freeVariables boundVariables (NmLet _ var value body) =
+        let newFreeVariables = doGetFreeVariables freeVariables boundVariables value
+            newBoundVariables = SortedSet.insert (jvmSimpleName var) boundVariables
+        in doGetFreeVariables newFreeVariables newBoundVariables body
+    doGetFreeVariables freeVariables boundVariables (NmApp _ (NmRef _ _) args) =
+        getExpressionsFreeVariables freeVariables boundVariables args
+    doGetFreeVariables freeVariables boundVariables (NmApp _ f args) =
+        getExpressionsFreeVariables freeVariables boundVariables (f :: args)
+    doGetFreeVariables freeVariables boundVariables (NmCon _ _ _ args) =
+        getExpressionsFreeVariables freeVariables boundVariables args
+    doGetFreeVariables freeVariables boundVariables (NmOp _ _ args) =
+        getExpressionsFreeVariables freeVariables boundVariables $ toList args
+    doGetFreeVariables freeVariables boundVariables (NmExtPrim _ _ args) =
+        getExpressionsFreeVariables freeVariables boundVariables args
+    doGetFreeVariables freeVariables boundVariables (NmForce _ t) =
+        doGetFreeVariables freeVariables boundVariables t
+    doGetFreeVariables freeVariables boundVariables (NmDelay _ t) =
+        doGetFreeVariables freeVariables boundVariables t
+    doGetFreeVariables freeVariables boundVariables (NmConCase _ sc alts def) =
+        let switchExprFreeVariables = doGetFreeVariables freeVariables boundVariables sc
+            altsFreeVariables = doGetFreeVariablesCon switchExprFreeVariables boundVariables alts
+        in maybe altsFreeVariables (doGetFreeVariables altsFreeVariables boundVariables) def
+    doGetFreeVariables freeVariables boundVariables (NmConstCase _ sc alts def) =
+        let switchExprFreeVariables = doGetFreeVariables freeVariables boundVariables sc
+            altsFreeVariables = doGetFreeVariablesConst switchExprFreeVariables boundVariables alts
+        in maybe altsFreeVariables (doGetFreeVariables altsFreeVariables boundVariables) def
+    doGetFreeVariables freeVariables _ _ = freeVariables
+
+    getExpressionsFreeVariables : SortedSet String -> SortedSet String -> List NamedCExp -> SortedSet String
+    getExpressionsFreeVariables freeVariables boundVariables expressions = go freeVariables expressions where
+        go : SortedSet String -> List NamedCExp -> SortedSet String
+        go freeVariables [] = freeVariables
+        go freeVariables (arg :: args) = go (doGetFreeVariables freeVariables boundVariables arg) args
+
+    doGetFreeVariablesCon : SortedSet String -> SortedSet String -> List NamedConAlt -> SortedSet String
+    doGetFreeVariablesCon freeVariables _ [] = freeVariables
+    doGetFreeVariablesCon freeVariables boundVariables ((MkNConAlt _ _ properties sc) :: rest) =
+        let newBoundVariables = SortedSet.union boundVariables (SortedSet.fromList (jvmSimpleName <$> properties))
+        in doGetFreeVariablesCon (doGetFreeVariables freeVariables newBoundVariables sc) boundVariables rest
+
+    doGetFreeVariablesConst : SortedSet String -> SortedSet String -> List NamedConstAlt -> SortedSet String
+    doGetFreeVariablesConst freeVariables _ [] = freeVariables
+    doGetFreeVariablesConst freeVariables boundVariables ((MkNConstAlt _ sc) :: rest) =
+        doGetFreeVariablesConst (doGetFreeVariables freeVariables boundVariables sc) boundVariables rest
+
+getFreeVariables : SortedSet String -> NamedCExp -> SortedSet String
+getFreeVariables boundVariables expr = doGetFreeVariables SortedSet.empty SortedSet.empty expr
 
 mutual
     markTailRecursion : NamedCExp -> Asm NamedCExp
@@ -274,7 +350,7 @@ mutual
 mutual
     eliminateSingleUsageVariable : NamedCExp -> NamedCExp
     eliminateSingleUsageVariable (NmLet fc var value body) = 
-        if getUsageCount var body == 1 then
+        if hasSingleUsage var body then
             eliminateSingleUsageVariable $ inlineVariable var value body
         else NmLet fc var (eliminateSingleUsageVariable value) (eliminateSingleUsageVariable body)
     eliminateSingleUsageVariable (NmLam fc param body) = NmLam fc param $ eliminateSingleUsageVariable body
@@ -301,8 +377,8 @@ mutual
     eliminateSingleUsageVariableConst : NamedConstAlt -> NamedConstAlt
     eliminateSingleUsageVariableConst (MkNConstAlt constant sc) = MkNConstAlt constant $ eliminateSingleUsageVariable sc
 
-exitInferenceScope : Scope -> Asm ()
-exitInferenceScope targetScope = updateCurrentScopeIndex (index targetScope)
+exitInferenceScope : Int -> Asm ()
+exitInferenceScope scopeIndex = updateCurrentScopeIndex scopeIndex
 
 enterInferenceScope : Int -> Int -> Asm ()
 enterInferenceScope lineNumberStart lineNumberEnd = do
@@ -315,25 +391,27 @@ enterInferenceScope lineNumberStart lineNumberEnd = do
     updateScope scopeIndex newScope
     updateCurrentScopeIndex scopeIndex
 
-createLambdaClosureScope : Nat -> Nat -> List String -> Scope -> Asm Scope
+createLambdaClosureScope : Int -> Int -> List String -> Scope -> Asm Scope
 createLambdaClosureScope scopeIndex childScopeIndex closureVariables parentScope = do
         let lambdaClosureVariableIndices = SortedMap.fromList $ getLambdaClosureVariableIndices [] 0 closureVariables
         Pure $ MkScope scopeIndex (Just $ index parentScope) SortedMap.empty lambdaClosureVariableIndices IUnknown
-                (length closureVariables) (lineNumbers parentScope) ("", "") [childScopeIndex]
+                (cast $ length closureVariables) (lineNumbers parentScope) ("", "") [childScopeIndex]
     where
-        getLambdaClosureVariableIndices : List (String, Nat) -> Nat -> List String -> List (String, Nat)
+        getLambdaClosureVariableIndices : List (String, Int) -> Int -> List String -> List (String, Int)
         getLambdaClosureVariableIndices acc _ [] = acc
         getLambdaClosureVariableIndices acc index (var :: vars) = 
             getLambdaClosureVariableIndices ((var, index) :: acc) (index + 1) vars
 
-enterInferenceLambdaScope : Int -> Int -> NamedCExp -> Asm ()
-enterInferenceLambdaScope lineNumberStart lineNumberEnd expr = do
+enterInferenceLambdaScope : Int -> Int -> Maybe Name -> NamedCExp -> Asm ()
+enterInferenceLambdaScope lineNumberStart lineNumberEnd parameterName expr = do
         parentScopeIndex <- getCurrentScopeIndex
         scopeIndex <- newScopeIndex
-        parentScope <- getScope parentScopeIndex
-        let usedVariables = filter (flip used expr) !(getVariables parentScopeIndex)
+        let boundVariables = maybe SortedSet.empty (flip SortedSet.insert SortedSet.empty . jvmSimpleName) parameterName
+        let freeVariables = getFreeVariables boundVariables expr
+        let usedVariables = filter (flip SortedSet.contains freeVariables) !(getVariables parentScopeIndex)
         newScope <- case usedVariables  of
             nonEmptyUsedVariables@(_ :: _) => do
+                parentScope <- getScope parentScopeIndex
                 lambdaParentScopeIndex <- newScopeIndex
                 closureScope <- createLambdaClosureScope lambdaParentScopeIndex scopeIndex nonEmptyUsedVariables
                     parentScope
@@ -348,18 +426,18 @@ enterInferenceLambdaScope lineNumberStart lineNumberEnd expr = do
 
 withInferenceScope : Int -> Int -> Asm result -> Asm result
 withInferenceScope lineNumberStart lineNumberEnd op = do
-    scope <- getScope !getCurrentScopeIndex
+    scopeIndex <- getCurrentScopeIndex
     enterInferenceScope lineNumberStart lineNumberEnd
     result <- op
-    exitInferenceScope scope
+    exitInferenceScope scopeIndex
     Pure result
 
-withInferenceLambdaScope : Int -> Int -> NamedCExp -> Asm result -> Asm result
-withInferenceLambdaScope lineNumberStart lineNumberEnd expr op = do
-    scope <- getScope !getCurrentScopeIndex
-    enterInferenceLambdaScope lineNumberStart lineNumberEnd expr
+withInferenceLambdaScope : Int -> Int -> Maybe Name -> NamedCExp -> Asm result -> Asm result
+withInferenceLambdaScope lineNumberStart lineNumberEnd parameterName expr op = do
+    scopeIndex <- getCurrentScopeIndex
+    enterInferenceLambdaScope lineNumberStart lineNumberEnd parameterName expr
     result <- op
-    exitInferenceScope scope
+    exitInferenceScope scopeIndex
     Pure result
 
 public export
@@ -445,6 +523,13 @@ substituteVariableSubMethodBody variable (NmConCase fc _ alts def) = NmConCase f
 substituteVariableSubMethodBody variable (NmConstCase fc _ alts def) = NmConstCase fc variable alts def
 substituteVariableSubMethodBody _ expr = expr
 
+combineSwitchTypes : Maybe InferredType -> List InferredType -> InferredType
+combineSwitchTypes defaultTy [] = fromMaybe IUnknown defaultTy
+combineSwitchTypes defaultTy altTypes@(altTy :: rest) = maybe (go altTy rest) (flip go altTypes) defaultTy where
+  go : InferredType -> List InferredType -> InferredType
+  go prevTy [] = prevTy
+  go prevTy (currTy :: rest) = if prevTy == currTy then go currTy rest else inferredObjectType
+
 mutual
     inferExpr : InferredType -> NamedCExp -> Asm InferredType
     inferExpr exprTy (NmDelay _ expr) = inferExprLam Nothing Nothing expr
@@ -478,8 +563,8 @@ mutual
             Pure ()
         let sortedAlts = if hasTypeCase then alts else sortConCases alts
         altTypes <- traverse (inferExprConAlt exprTy) sortedAlts
-        defTy <- maybe (Pure IUnknown) (inferExprWithNewScope exprTy) def
-        Pure $ foldl (<+>) IUnknown (defTy :: altTypes)
+        defaultTy <- traverse (inferExprWithNewScope exprTy) def
+        Pure $ combineSwitchTypes defaultTy altTypes
 
     inferExpr exprTy (NmConstCase fc sc [] Nothing) = Pure IUnknown
     inferExpr exprTy (NmConstCase fc sc [] (Just expr)) = inferExpr exprTy expr
@@ -494,9 +579,8 @@ mutual
             Pure ()
         sortedAlts <- sortConstCases constantType alts
         altTypes <- traverse (inferExprConstAlt exprTy) sortedAlts
-        defTy <- maybe (Pure IUnknown) (inferExprWithNewScope exprTy) def
-        let switchResultType = foldl (<+>) IUnknown (defTy :: altTypes)
-        Pure switchResultType
+        defaultTy <- traverse (inferExprWithNewScope exprTy) def
+        Pure $ combineSwitchTypes defaultTy altTypes
       where
         getConstant : NamedConstAlt -> TT.Constant
         getConstant (MkNConstAlt constant _) = constant
@@ -618,7 +702,7 @@ mutual
         let (_, lineStart, lineEnd) = getSourceLocation expr
         let jvmParameterNameAndType = (\(name, ty) => (jvmSimpleName name, ty)) <$> parameterNameAndType
         let lambdaType = getLambdaType (fst <$> parameterNameAndType)
-        lambdaBodyReturnType <- withInferenceLambdaScope lineStart lineEnd expr $ do
+        lambdaBodyReturnType <- withInferenceLambdaScope lineStart lineEnd (fst <$> parameterNameAndType) expr $ do
             when (lambdaType /= ThunkLambda) $
                 traverse_ createAndAddVariable jvmParameterNameAndType
             maybe (Pure ()) id parameterValueExpr
@@ -676,8 +760,8 @@ mutual
         let (_, lineStart, lineEnd) = getSourceLocation expr
         withInferenceScope lineStart lineEnd $ inferExpr exprTy expr
 
-    inferSelfTailCallParameter : SortedMap Nat InferredType -> SortedMap Nat String ->
-        (NamedCExp, Nat) -> Asm ()
+    inferSelfTailCallParameter : SortedMap Int InferredType -> SortedMap Int String ->
+        (NamedCExp, Int) -> Asm ()
     inferSelfTailCallParameter types argumentNameByIndices (arg, index) = do
         let variableType = fromMaybe IUnknown $ SortedMap.lookup index types
         ty <- inferExpr variableType arg
@@ -691,7 +775,7 @@ mutual
                 types <- getVariableTypes
                 let argumentNameByIndices = SortedMap.fromList (map swap $ toList $ variableIndices !(getScope 0))
                 traverse (inferSelfTailCallParameter types argumentNameByIndices) $
-                    List.zip args [0 .. length argsTail]
+                    List.zip args [0 .. the Int $ cast $ length argsTail]
                 Pure exprTy
     inferExprApp exprTy (NmApp _ (NmRef _ idrisName) args) = do
         let functionName = jvmName idrisName
@@ -708,7 +792,6 @@ mutual
 
     inferExprCon : InferredType -> String -> Name -> List NamedCExp -> Asm InferredType
     inferExprCon exprTy fileName name args = do
-        let jname = jvmName name
         let argsWithTypes = List.zip args (replicate (length args) IUnknown)
         traverse_ inferParameter argsWithTypes
         pure idrisObjectType
@@ -879,22 +962,25 @@ inferDef idrisName fc (MkNmFun args expr) = do
         let fileName = fst $ getSourceLocationFromFc fc
         let jvmClassAndMethodName = getIdrisFunctionName (className jname) fileName (methodName jname)
         let tailCallCategory = MkTailCallCategory hasSelfTailCall hasNonSelfTailCall
-        let function = MkFunction jname (MkInferredFunctionType IUnknown []) SortedMap.empty 0 jvmClassAndMethodName
-            tailCallCategory (NmCrash emptyFC "uninitialized function")
+        let arity = length args
+        let arityInt = the Int $ cast arity
+        let argumentNames = jvmSimpleName <$> args
+        let argIndices = getArgumentIndices arityInt argumentNames
+        let initialArgumentTypes = replicate arity IUnknown
+        let argumentTypesByName = SortedMap.fromList $ List.zip argumentNames initialArgumentTypes
+        let function = MkFunction jname (MkInferredFunctionType IUnknown initialArgumentTypes)
+            SortedMap.empty 0 jvmClassAndMethodName tailCallCategory (NmCrash emptyFC "uninitialized function")
         setCurrentFunction function
         updateState $ record { functions $= SortedMap.insert jname function }
         optimizedExpr <- optimize tailCallCategory expr
-        debug $ "Inferring " ++ show idrisName ++ "(" ++ show args ++ ")"
+        let idrisNameString = show idrisName
+        debug $ "Inferring " ++ idrisNameString ++ "(" ++ show args ++ ")"
         updateCurrentFunction $ record { optimizedBody = optimizedExpr }
 
         resetScope
-        let arity = length args
-        let argumentNames = jvmSimpleName <$> args
-        let argIndices = getArgumentIndices arity argumentNames
-        let argInitialTypes = SortedMap.fromList $ List.zip argumentNames $ replicate arity IUnknown
         scopeIndex <- newScopeIndex
         let (_, lineStart, lineEnd) = getSourceLocation expr
-        let functionScope = MkScope scopeIndex Nothing argInitialTypes argIndices IUnknown arity
+        let functionScope = MkScope scopeIndex Nothing argumentTypesByName argIndices IUnknown arityInt
             (lineStart, lineEnd) ("", "") []
 
         updateScope scopeIndex functionScope

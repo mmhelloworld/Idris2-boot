@@ -46,7 +46,7 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>appassembler-maven-plugin</artifactId>
                 <configuration>
-                    <extraJvmArguments>-Xss10m -DIDRIS2_BOOT_HOME=@BASEDIR@</extraJvmArguments>
+                    <extraJvmArguments>-Xss8m -Xms2g -Xmx3g -DIDRIS2_BOOT_HOME=@BASEDIR@</extraJvmArguments>
                     <repositoryName>lib</repositoryName>
                     <repositoryLayout>flat</repositoryLayout>
                     <assembleDirectory>${project.build.directory}/idris2-boot-jvm</assembleDirectory>

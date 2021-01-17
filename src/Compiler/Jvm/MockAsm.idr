@@ -14,7 +14,6 @@ import Data.Vect
 import Compiler.Jvm.Asm
 import Compiler.Jvm.InferredType
 import Compiler.Jvm.Jname
-import Compiler.Jvm.Jvar
 import Compiler.Jvm.ShowUtil
 
 import IdrisJvm.IO
