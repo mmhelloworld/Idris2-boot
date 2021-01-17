@@ -1,26 +1,48 @@
 package io.github.mmhelloworld.idris2boot.runtime;
 
-import org.apache.commons.lang3.SystemUtils;
-
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import static java.lang.System.currentTimeMillis;
 
 public final class IdrisSystem {
     private static final Map<String, String> environmentVariables;
     private static final List<String> environmentVariableNames;
+    public static final String OS_NAME;
 
     static {
         environmentVariables = new LinkedHashMap<>(System.getenv());
         environmentVariables.putAll((Map) System.getProperties());
         environmentVariableNames = new ArrayList<>(environmentVariables.keySet());
+
+        // To conform to support/chez/support.ss
+        String osNameProperty = getOsNameProperty();
+        if (osNameProperty.startsWith("windows")) {
+            OS_NAME = "windows";
+        } else if (osNameProperty.startsWith("mac")) {
+            OS_NAME = "darwin";
+        } else if (Stream.of("linux", "aix", "solaris", "sunos", "freebsd", "openbsd", "netbsd")
+            .anyMatch(osNameProperty::startsWith)) {
+            OS_NAME = "unix";
+        } else {
+            OS_NAME = "unknown";
+        }
+    }
+
+    private static String getOsNameProperty() {
+        try {
+            return System.getProperty("os.name").toLowerCase(Locale.ROOT);
+        } catch (SecurityException exception) {
+            return "";
+        }
     }
 
     private IdrisSystem() {
@@ -74,16 +96,7 @@ public final class IdrisSystem {
     }
 
     public static String getOsName() {
-        // To conform to support/chez/support.ss:1
-        if (SystemUtils.IS_OS_MAC) {
-            return "darwin";
-        } else if (SystemUtils.IS_OS_UNIX) {
-            return "unix";
-        } else if (SystemUtils.IS_OS_WINDOWS) {
-            return "windows";
-        } else {
-            return "unknown";
-        }
+        return OS_NAME;
     }
 
     // This may not be adequate but simple enough for basic cases

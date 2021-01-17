@@ -31,7 +31,6 @@ import Compiler.Jvm.MockAsm
 import Compiler.Jvm.Optimizer
 import Compiler.Jvm.InferredType
 import Compiler.Jvm.Jname
-import Compiler.Jvm.Jvar
 import Compiler.Jvm.Variable
 import Compiler.Jvm.Tree
 import Compiler.Jvm.FunctionTree
@@ -49,14 +48,14 @@ addScopeLocalVariables scope = do
     let (labelStart, labelEnd) = labels scope
     go labelStart labelEnd $ SortedMap.toList $ variableIndices scope
   where
-    go : String -> String -> List (String, Nat) -> Asm ()
+    go : String -> String -> List (String, Int) -> Asm ()
     go _ _ [] = Pure ()
     go labelStart labelEnd ((name, varIndex) :: rest) = do
         variableType <- getVariableTypeAtScope (index scope) name
         LocalVariable name (getJvmTypeDescriptor variableType) Nothing labelStart labelEnd varIndex
         go labelStart labelEnd rest
 
-addLocalVariables : Nat -> Asm ()
+addLocalVariables : Int -> Asm ()
 addLocalVariables scopeIndex = do
     scope <- getScope scopeIndex
     addScopeLocalVariables scope
@@ -67,15 +66,15 @@ enterScope = do
     scopeIndex <- newScopeIndex
     updateCurrentScopeIndex scopeIndex
 
-exitScope : Scope -> Asm ()
-exitScope targetScope = updateCurrentScopeIndex $ index targetScope
+exitScope : Int -> Asm ()
+exitScope scopeIndex = updateCurrentScopeIndex scopeIndex
 
 withScope : Lazy (Asm ()) -> Asm ()
 withScope op = do
-    scope <- getScope !getCurrentScopeIndex
+    scopeIndex <- getCurrentScopeIndex
     enterScope
     op
-    exitScope scope
+    exitScope scopeIndex
 
 methodStartLabel : String
 methodStartLabel = "methodStartLabel"
@@ -155,8 +154,8 @@ getSwitchCasesWithEndLabel switchCases labelStarts = go $ List.zip switchCases (
 labelHashCodeAlt : (Int, a) -> Asm (String, Int, a)
 labelHashCodeAlt (hash, expressions) = Pure (!newLabel, hash, expressions)
 
-getHashCodeCasesWithLabels : SortedMap Int (List (Nat, a)) ->
-    Asm (List (String, Int, List (Nat, a)))
+getHashCodeCasesWithLabels : SortedMap Int (List (Int, a)) ->
+    Asm (List (String, Int, List (Int, a)))
 getHashCodeCasesWithLabels positionAndAltsByHash = traverse labelHashCodeAlt $ SortedMap.toList positionAndAltsByHash
 
 mutual
@@ -214,7 +213,8 @@ mutual
                 jname <- idrisName <$> getCurrentFunction
                 parameterTypes <- getFunctionParameterTypes jname
                 let argsWithTypes = List.zip args parameterTypes
-                traverse_ storeParameter $ List.zip [0 .. lastArgIndex] argsWithTypes
+                variableTypes <- getVariableTypes
+                traverse_ (storeParameter variableTypes) $ List.zip [0 .. the Int $ cast lastArgIndex] argsWithTypes
                 Goto methodStartLabel
 
     assembleExpr isTailCall returnType (NmApp _ (NmRef _ idrisName) args) = do
@@ -261,8 +261,9 @@ mutual
         New constructorClassName
         Dup
         maybe (Ldc . StringConst $ constructorClassName) Iconst tag
-        let constructorParameterCount = length args
-        let constructorTypes = constructorType :: replicate constructorParameterCount inferredObjectType
+        let constructorParameterCountNat = length args
+        let constructorParameterCount = the Int $ cast constructorParameterCountNat
+        let constructorTypes = constructorType :: replicate constructorParameterCountNat inferredObjectType
         let argsWithTypes = List.zip args $ drop 1 constructorTypes
         traverse assembleParameter argsWithTypes
         let descriptor = getMethodDescriptor $ MkInferredFunctionType IVoid constructorTypes
@@ -324,7 +325,7 @@ mutual
         asmCast inferredStringType returnType
         when isTailCall $ asmReturn returnType
     assembleExpr isTailCall returnType (NmPrimVal fc (Ch value)) = do
-        Iconst (cast value)
+        Iconst $ cast value
         asmCast IChar returnType
         when isTailCall $ asmReturn returnType
     assembleExpr isTailCall returnType (NmPrimVal fc (Db value)) = do
@@ -343,7 +344,7 @@ mutual
         when isTailCall $ asmReturn returnType
     assembleExpr _ _ expr = Throw (getFC expr) $ "Cannot compile " ++ show expr ++ " yet"
 
-    assembleConstructorSwitchExpr : NamedCExp -> Asm Nat
+    assembleConstructorSwitchExpr : NamedCExp -> Asm Int
     assembleConstructorSwitchExpr (NmLocal _ loc) = getVariableIndex $ jvmSimpleName loc
     assembleConstructorSwitchExpr sc = do
         idrisObjectVariableIndex <- getVariableIndex $ "constructorSwitchValue" ++ show !newDynamicVariableIndex
@@ -371,7 +372,6 @@ mutual
         CreateLabel endLabel
         operator elseLabel
         LabelStart ifLabel
-        scope <- getScope !getCurrentScopeIndex
         Iconst 1
         Goto endLabel
         LabelStart elseLabel
@@ -394,7 +394,6 @@ mutual
         InvokeMethod InvokeVirtual className "compareTo" ("(L" ++ className ++ ";)I") False
         operator elseLabel
         LabelStart ifLabel
-        scope <- getScope !getCurrentScopeIndex
         Iconst 1
         Goto endLabel
         LabelStart elseLabel
@@ -706,16 +705,16 @@ mutual
     assembleParameter : (NamedCExp, InferredType) -> Asm ()
     assembleParameter (param, ty) = assembleExpr False ty param
 
-    storeParameter : (Nat, NamedCExp, InferredType) -> Asm ()
-    storeParameter (var, (NmLocal _ loc), ty) = do
+    storeParameter : SortedMap Int InferredType -> (Int, NamedCExp, InferredType) -> Asm ()
+    storeParameter variableTypes (var, (NmLocal _ loc), ty) = do
         let valueVariableName = jvmSimpleName loc
         valueVariableIndex <- getVariableIndex valueVariableName
         if var == valueVariableIndex then Pure ()
         else do
             valueVariableType <- getVariableType valueVariableName
-            loadVar !getVariableTypes valueVariableType ty valueVariableIndex
+            loadVar variableTypes valueVariableType ty valueVariableIndex
             storeVar ty ty var
-    storeParameter (var, param, ty) = do
+    storeParameter _ (var, param, ty) = do
         assembleExpr False ty param
         storeVar ty ty var
 
@@ -750,7 +749,6 @@ mutual
             let lambdaBodyReturnType = returnType scope
             let lambdaType = getLambdaType parameterName
             let lambdaInterfaceType = getLambdaInterfaceType lambdaType lambdaBodyReturnType
-            className <- getClassName
             parameterTypes <- traverse getVariableType
                 (jvmSimpleName <$> (if parameterName == Just (UN "$jvm$thunk") then Nothing else parameterName))
             let variableTypes = SortedMap.values !(loadClosures declaringScope scope)
@@ -764,24 +762,25 @@ mutual
             let instantiatedMethodDescriptor = getMethodDescriptor $
                 MkInferredFunctionType implementationMethodReturnType $ toList parameterTypes
             let methodPrefix = if isExtracted then "extracted" else "lambda"
-            lambdaMethodName <- getLambdaImplementationMethodName methodPrefix
+            lambdaClassMethodName <- getLambdaImplementationMethodName methodPrefix
+            let lambdaMethodName = methodName lambdaClassMethodName
+            let lambdaClassName = className lambdaClassMethodName
             let interfaceMethodName = getLambdaInterfaceMethodName lambdaType
             let indy = do
-                invokeDynamic className lambdaMethodName interfaceMethodName invokeDynamicDescriptor
+                invokeDynamic lambdaClassName lambdaMethodName interfaceMethodName invokeDynamicDescriptor
                     (getSamDesc lambdaType) implementationMethodDescriptor instantiatedMethodDescriptor
                 when (lambdaReturnType /= inferredObjectType) $ asmCast lambdaInterfaceType lambdaReturnType
             let staticCall = do
-                 InvokeMethod InvokeStatic className lambdaMethodName implementationMethodDescriptor False
+                 InvokeMethod InvokeStatic lambdaClassName lambdaMethodName implementationMethodDescriptor False
                  asmCast lambdaBodyReturnType lambdaReturnType
             maybe indy (const staticCall) parameterValueExpr
             when isTailCall $
-                if isExtracted then asmReturn implementationMethodReturnType
+                if isExtracted then asmReturn lambdaReturnType
                 else asmReturn lambdaInterfaceType
             let oldLineNumberLabels = lineNumberLabels !GetState
             updateState $ record { lineNumberLabels = SortedMap.empty }
-            let accessModifiers = if isExtracted then [Private, Static]
-                else [Private, Static, Synthetic]
-            CreateMethod accessModifiers "" className lambdaMethodName implementationMethodDescriptor
+            let accessModifiers = [Public, Static]
+            CreateMethod accessModifiers "" lambdaClassName lambdaMethodName implementationMethodDescriptor
                 Nothing Nothing [] []
             MethodCodeStart
             let labelStart = methodStartLabel
@@ -802,8 +801,7 @@ mutual
             addLambdaStartLabel : Scope -> String -> Asm ()
             addLambdaStartLabel scope label = do
                 let scopeIndex = index scope
-                lambdaScope <- getScope scopeIndex
-                let lineNumberStart = fst $ lineNumbers lambdaScope
+                let lineNumberStart = fst $ lineNumbers scope
                 CreateLabel label
                 LabelStart label
                 addLineNumber lineNumberStart label
@@ -812,21 +810,20 @@ mutual
             addLambdaEndLabel : Scope -> String -> Asm ()
             addLambdaEndLabel scope label = do
                 let scopeIndex = index scope
-                lambdaScope <- getScope scopeIndex
-                let lineNumberEnd = snd $ lineNumbers lambdaScope
+                let lineNumberEnd = snd $ lineNumbers scope
                 CreateLabel label
                 LabelStart label
                 updateScopeEndLabel scopeIndex label
 
-            loadVariables : SortedMap Nat InferredType -> SortedMap Nat (InferredType, InferredType) ->
-                List Nat -> Asm ()
+            loadVariables : SortedMap Int InferredType -> SortedMap Int (InferredType, InferredType) ->
+                List Int -> Asm ()
             loadVariables _ _ [] = Pure ()
             loadVariables declaringScopeVariableTypes types (var :: vars) = do
                 let (sourceType, targetType) = fromMaybe (IUnknown, IUnknown) (SortedMap.lookup var types)
                 loadVar declaringScopeVariableTypes sourceType targetType var
                 loadVariables declaringScopeVariableTypes types vars
 
-            loadClosures : Scope -> Scope -> Asm (SortedMap Nat InferredType)
+            loadClosures : Scope -> Scope -> Asm (SortedMap Int InferredType)
             loadClosures declaringScope currentScope = case parentIndex currentScope of
                     Just parentScopeIndex => do
                         parentScope <- getScope parentScopeIndex
@@ -838,16 +835,16 @@ mutual
                         Pure $ SortedMap.fromList (getTargetType <$> SortedMap.toList typesByIndex)
                     Nothing => Pure SortedMap.empty
                 where
-                    getTargetType : (Nat, InferredType, InferredType) -> (Nat, InferredType)
+                    getTargetType : (Int, InferredType, InferredType) -> (Int, InferredType)
                     getTargetType (varIndex, _, targetType) = (varIndex, targetType)
 
-                    getVariableNameAndIndex : String -> Asm (String, Nat)
+                    getVariableNameAndIndex : String -> Asm (String, Int)
                     getVariableNameAndIndex name = do
                         variableIndex <- getVariableIndexAtScope (index declaringScope) name
                         Pure (name, variableIndex)
 
-                    getIndexAndType : SortedMap Nat (InferredType, InferredType) -> List (String, Nat) ->
-                        Asm (SortedMap Nat (InferredType, InferredType))
+                    getIndexAndType : SortedMap Int (InferredType, InferredType) -> List (String, Int) ->
+                        Asm (SortedMap Int (InferredType, InferredType))
                     getIndexAndType acc [] = Pure acc
                     getIndexAndType acc ((name, varIndex) :: rest) = do
                         targetType <- getVariableType name
@@ -857,7 +854,8 @@ mutual
     assembleMissingDefault :InferredType -> FC -> String -> Asm ()
     assembleMissingDefault returnType fc defaultLabel = do
         LabelStart defaultLabel
-        assembleExpr True returnType (NmCrash fc "Unreachable code")
+        defaultValue returnType
+        asmReturn returnType
 
     assembleConstantSwitch : (returnType: InferredType) -> (switchExprType: InferredType) -> FC ->
         NamedCExp -> List NamedConstAlt -> Maybe NamedCExp -> Asm ()
@@ -905,7 +903,8 @@ mutual
             hashCodePositionVariableSuffixIndex <- newDynamicVariableIndex
             let hashCodePositionVariableName = "hashCodePosition" ++ show hashCodePositionVariableSuffixIndex
             hashCodePositionVariableIndex <- getVariableIndex hashCodePositionVariableName
-            hashPositionAndAlts <- traverse (constantAltHashCodeExpr fc) $ List.zip [0 .. length $ drop 1 alts] alts
+            hashPositionAndAlts <- traverse (constantAltHashCodeExpr fc) $
+                List.zip [0 .. the Int $ cast $ length $ drop 1 alts] alts
             let positionAndAltsByHash = multiValueMap fst snd hashPositionAndAlts
             hashCodeSwitchCases <- getHashCodeCasesWithLabels positionAndAltsByHash
             let labels = fst <$> hashCodeSwitchCases
@@ -932,25 +931,25 @@ mutual
             assembleConstantSwitch returnType IInt fc (NmLocal fc $ UN hashCodePositionVariableName)
                 (hashPositionSwitchAlts hashPositionAndAlts) def
         where
-            constantAltHashCodeExpr : FC -> (Nat, NamedConstAlt) -> Asm (Int, Nat, NamedConstAlt)
+            constantAltHashCodeExpr : FC -> (Int, NamedConstAlt) -> Asm (Int, Int, NamedConstAlt)
             constantAltHashCodeExpr fc positionAndAlt@(position, MkNConstAlt constant _) = do
                 Just hashCodeValue <- hashCode constant
                     | Nothing => Throw fc ("Constant " ++ show constant ++ " cannot be compiled to 'Switch'.")
                 Pure (hashCodeValue, position, snd positionAndAlt)
 
-            hashPositionSwitchAlts : List (Int, Nat, NamedConstAlt) -> List NamedConstAlt
+            hashPositionSwitchAlts : List (Int, Int, NamedConstAlt) -> List NamedConstAlt
             hashPositionSwitchAlts exprPositionAlts = reverse $ go [] exprPositionAlts where
-                go : List NamedConstAlt -> List (Int, Nat, NamedConstAlt) -> List NamedConstAlt
+                go : List NamedConstAlt -> List (Int, Int, NamedConstAlt) -> List NamedConstAlt
                 go acc [] = acc
                 go acc ((_, position, (MkNConstAlt _ expr)) :: alts) =
-                    go (MkNConstAlt (I $ cast position) expr :: acc) alts
+                    go (MkNConstAlt (I position) expr :: acc) alts
 
-            assembleHashCodeSwitchCases : FC -> String -> Nat -> Nat -> String ->
-                (String, Int, List (Nat, NamedConstAlt)) -> Asm ()
+            assembleHashCodeSwitchCases : FC -> String -> Int -> Int -> String ->
+                (String, Int, List (Int, NamedConstAlt)) -> Asm ()
             assembleHashCodeSwitchCases fc _ _ _ _ (_, _, []) = Throw fc "Empty cases"
             assembleHashCodeSwitchCases fc constantClass constantExprVariableIndex hashCodePositionVariableIndex
                 switchEndLabel (label, _, positionAndAlts) = go label positionAndAlts where
-                    go : String -> List (Nat, NamedConstAlt) -> Asm ()
+                    go : String -> List (Int, NamedConstAlt) -> Asm ()
                     go _ [] = Pure ()
                     go label (positionAndAlt :: nextPositionAndAlt :: positionAndAlts) = do
                         let (position, (MkNConstAlt constant _)) = positionAndAlt
@@ -965,7 +964,7 @@ mutual
                         InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
                         nextLabel <- newLabel
                         Ifeq nextLabel
-                        Iconst $ cast position
+                        Iconst position
                         storeVar IInt IInt hashCodePositionVariableIndex
                         Goto switchEndLabel
                         go nextLabel (nextPositionAndAlt :: positionAndAlts)
@@ -979,31 +978,32 @@ mutual
                         assembleHashCodeSwitchConstant fc constant
                         InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
                         Ifeq switchEndLabel
-                        Iconst $ cast position
+                        Iconst position
                         storeVar IInt IInt hashCodePositionVariableIndex
                         Goto switchEndLabel
 
-    assembleConCaseExpr : InferredType -> Nat -> Name -> List Name -> NamedCExp -> Asm ()
+    assembleConCaseExpr : InferredType -> Int -> Name -> List Name -> NamedCExp -> Asm ()
     assembleConCaseExpr returnType idrisObjectVariableIndex name args expr = do
-            bindArg 0 args
+            variableTypes <- getVariableTypes
+            bindArg variableTypes 0 args
             assembleExpr True returnType expr
         where
             constructorType : InferredType
             constructorType = IRef $ jvmSimpleName name
 
-            bindArg : Nat -> List Name -> Asm ()
-            bindArg _ [] = Pure ()
-            bindArg index (var :: vars) = do
+            bindArg : SortedMap Int InferredType -> Int -> List Name -> Asm ()
+            bindArg _ _ [] = Pure ()
+            bindArg variableTypes index (var :: vars) = do
                 let variableName = jvmSimpleName var
                 when (used variableName expr) $ do
-                    loadVar !getVariableTypes idrisObjectType idrisObjectType idrisObjectVariableIndex
-                    Iconst $ cast index
+                    loadVar variableTypes idrisObjectType idrisObjectType idrisObjectVariableIndex
+                    Iconst index
                     InvokeMethod InvokeInterface idrisObjectClass "getProperty" "(I)Ljava/lang/Object;" True
                     variableIndex <- getVariableIndex variableName
                     storeVar inferredObjectType !(getVariableType variableName) variableIndex
-                bindArg (index + 1) vars
+                bindArg variableTypes (index + 1) vars
 
-    assembleConstructorSwitch : InferredType -> FC -> Nat -> List NamedConAlt -> Maybe NamedCExp -> Asm ()
+    assembleConstructorSwitch : InferredType -> FC -> Int -> List NamedConAlt -> Maybe NamedCExp -> Asm ()
     assembleConstructorSwitch returnType fc idrisObjectVariableIndex alts def = do
             switchCases <- getCasesWithLabels alts
             let labels = fst <$> switchCases
@@ -1049,7 +1049,7 @@ mutual
             assembleExprConAlt (labelStart, _, (MkNConAlt name tag args expr), labelEnd) =
                 assembleCaseWithScope labelStart labelEnd name args expr
 
-        assembleStringConstructorSwitch : InferredType -> FC -> Nat -> List NamedConAlt ->
+        assembleStringConstructorSwitch : InferredType -> FC -> Int -> List NamedConAlt ->
             Maybe NamedCExp -> Asm ()
         assembleStringConstructorSwitch returnType fc idrisObjectVariableIndex alts def = do
             constantExprVariableSuffixIndex <- newDynamicVariableIndex
@@ -1059,7 +1059,8 @@ mutual
             hashCodePositionVariableSuffixIndex <- newDynamicVariableIndex
             let hashCodePositionVariableName = "hashCodePosition" ++ show hashCodePositionVariableSuffixIndex
             hashCodePositionVariableIndex <- getVariableIndex hashCodePositionVariableName
-            hashPositionAndAlts <- traverse (conAltHashCodeExpr fc) $ List.zip [0 .. length $ drop 1 alts] alts
+            hashPositionAndAlts <- traverse (conAltHashCodeExpr fc) $
+                List.zip [0 .. the Int $ cast $ length $ drop 1 alts] alts
             let positionAndAltsByHash = multiValueMap fst snd hashPositionAndAlts
             hashCodeSwitchCases <- getHashCodeCasesWithLabels positionAndAltsByHash
             let labels = fst <$> hashCodeSwitchCases
@@ -1086,25 +1087,25 @@ mutual
             assembleConstructorSwitch returnType fc idrisObjectVariableIndex
                 (hashPositionSwitchAlts hashPositionAndAlts) def
         where
-            conAltHashCodeExpr : FC -> (Nat, NamedConAlt) -> Asm (Int, Nat, NamedConAlt)
+            conAltHashCodeExpr : FC -> (Int, NamedConAlt) -> Asm (Int, Int, NamedConAlt)
             conAltHashCodeExpr fc positionAndAlt@(position, MkNConAlt name _ _ _) = do
                 Just hashCodeValue <- hashCode (Str $ jvmSimpleName name)
                     | Nothing => Throw fc ("Constructor " ++ show name ++ " cannot be compiled to 'Switch'.")
                 Pure (hashCodeValue, position, snd positionAndAlt)
 
-            hashPositionSwitchAlts : List (Int, Nat, NamedConAlt) -> List NamedConAlt
+            hashPositionSwitchAlts : List (Int, Int, NamedConAlt) -> List NamedConAlt
             hashPositionSwitchAlts exprPositionAlts = reverse $ go [] exprPositionAlts where
-                go : List NamedConAlt -> List (Int, Nat, NamedConAlt) -> List NamedConAlt
+                go : List NamedConAlt -> List (Int, Int, NamedConAlt) -> List NamedConAlt
                 go acc [] = acc
                 go acc ((_, position, (MkNConAlt name _ args expr)) :: alts) =
-                    go (MkNConAlt name (Just $ cast position) args expr :: acc) alts
+                    go (MkNConAlt name (Just position) args expr :: acc) alts
 
-            assembleHashCodeSwitchCases : FC -> String -> Nat -> Nat -> String ->
-                (String, Int, List (Nat, NamedConAlt)) -> Asm ()
+            assembleHashCodeSwitchCases : FC -> String -> Int -> Int -> String ->
+                (String, Int, List (Int, NamedConAlt)) -> Asm ()
             assembleHashCodeSwitchCases fc _ _ _ _ (_, _, []) = Throw fc "Empty cases"
             assembleHashCodeSwitchCases fc constantClass constantExprVariableIndex hashCodePositionVariableIndex
                 switchEndLabel (label, _, positionAndAlts) = go label positionAndAlts where
-                    go : String -> List (Nat, NamedConAlt) -> Asm ()
+                    go : String -> List (Int, NamedConAlt) -> Asm ()
                     go _ [] = Pure ()
                     go label (positionAndAlt :: nextPositionAndAlt :: positionAndAlts) = do
                         let (position, (MkNConAlt name _ _ _)) = positionAndAlt
@@ -1119,7 +1120,7 @@ mutual
                         InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
                         nextLabel <- newLabel
                         Ifeq nextLabel
-                        Iconst $ cast position
+                        Iconst position
                         storeVar IInt IInt hashCodePositionVariableIndex
                         Goto switchEndLabel
                         go nextLabel (nextPositionAndAlt :: positionAndAlts)
@@ -1133,7 +1134,7 @@ mutual
                         Ldc $ StringConst $ jvmSimpleName name
                         InvokeMethod InvokeVirtual constantClass "equals" "(Ljava/lang/Object;)Z" False
                         Ifeq switchEndLabel
-                        Iconst $ cast position
+                        Iconst position
                         storeVar IInt IInt hashCodePositionVariableIndex
                         Goto switchEndLabel
 
@@ -1193,7 +1194,7 @@ mutual
         Aconstnull
         asmCast inferredObjectType returnType
     jvmExtPrim _ returnType SysOS [] = do
-        InvokeMethod InvokeStatic idrisSystemClass "getOsName" "()Ljava/lang/String;" False
+        Field GetStatic idrisSystemClass "OS_NAME" "Ljava/lang/String;"
         asmCast inferredStringType returnType
     jvmExtPrim _ returnType SysCodegen [] = do
         Ldc $ StringConst "\"jvm\""
@@ -1222,7 +1223,7 @@ assembleDefinition idrisName fc def@(MkNmFun args expr) = do
         lineNumberLabels = SortedMap.empty }
     updateCurrentFunction $ record { dynamicVariableCounter = 0 }
     let optimizedExpr = optimizedBody function
-    debug $ "Assembling " ++ show idrisName ++ "(" ++ show args ++ ")"
+    debug $ "Assembling " ++ show idrisName
     CreateMethod [Public, Static] fileName declaringClassName methodName descriptor Nothing Nothing [] []
     MethodCodeStart
     CreateLabel methodStartLabel
@@ -1245,9 +1246,9 @@ assembleDefinition idrisName fc (MkNmError expr) = assembleDefinition idrisName 
 assembleDefinition idrisName fc def@(MkNmForeign _ argumentTypes _) = do
     let jname = jvmName idrisName
     function <- getFunction jname
-    let arity = length argumentTypes
+    let arity = the Int $ cast $ length argumentTypes
     let args =
-       if arity > 0 then (\argumentIndex => UN $ "arg" ++ show argumentIndex) <$> [0 .. Nat.pred arity] else []
+       if arity > 0 then (\argumentIndex => UN $ "arg" ++ show argumentIndex) <$> [0 .. arity - 1] else []
     assembleDefinition idrisName fc (MkNmFun args $ optimizedBody function)
 assembleDefinition idrisName fc def@(MkNmCon t a _) = Pure ()
 

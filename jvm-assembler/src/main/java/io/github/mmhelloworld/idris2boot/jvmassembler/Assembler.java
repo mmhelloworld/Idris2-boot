@@ -14,6 +14,7 @@ import io.github.mmhelloworld.idris2boot.jvmassembler.AnnotationValue.AnnLong;
 import io.github.mmhelloworld.idris2boot.jvmassembler.AnnotationValue.AnnShort;
 import io.github.mmhelloworld.idris2boot.jvmassembler.AnnotationValue.AnnString;
 import io.github.mmhelloworld.idris2boot.jvmassembler.JBsmArg.JBsmArgGetType;
+import io.github.mmhelloworld.idris2boot.runtime.IdrisSystem;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
@@ -25,8 +26,19 @@ import org.objectweb.asm.Type;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.Deque;
 import java.util.HashMap;
@@ -38,6 +50,8 @@ import java.util.stream.IntStream;
 
 import static java.lang.Boolean.parseBoolean;
 import static java.lang.String.format;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import static java.util.Collections.emptyMap;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
@@ -175,6 +189,7 @@ import static org.objectweb.asm.Opcodes.T_SHORT;
 public final class Assembler {
     private static final boolean shouldDebug = parseBoolean(System.getProperty("IDRIS_JVM_DEBUG", "false"));
     private final Map<String, ClassWriter> cws;
+    private final Deque<ClassMethodVisitor> classMethodVisitorStack = new LinkedList<>();
     private Map<String, Object> env;
     private ClassWriter cw;
     private MethodVisitor mv;
@@ -183,7 +198,6 @@ public final class Assembler {
     private String methodName;
     private int localVarCount;
     private boolean shouldDescribeFrame;
-    private final Deque<ClassMethodVisitor> classMethodVisitorStack = new LinkedList<>();
 
     public Assembler() {
         this.cws = new HashMap<>();
@@ -302,6 +316,7 @@ public final class Assembler {
                 .forEach(classNameAndClassWriter ->
                     writeClass(classNameAndClassWriter.getKey(), classNameAndClassWriter.getValue(),
                         outputClassFileDir));
+            copyRuntimeClasses(outputClassFileDir);
         }
     }
 
@@ -338,7 +353,6 @@ public final class Assembler {
         cw = cws.computeIfAbsent(className, cname -> {
             final ClassWriter classWriter = new IdrisClassWriter(COMPUTE_MAXS + COMPUTE_FRAMES);
             classWriter.visit(52, ACC_PUBLIC, cname, null, "java/lang/Object", null);
-            createDefaultConstructor(classWriter);
             return classWriter;
         });
         fv = cw.visitField(acc, fieldName, desc, sig, value);
@@ -368,7 +382,6 @@ public final class Assembler {
             final ClassWriter classWriter = new IdrisClassWriter(COMPUTE_MAXS + COMPUTE_FRAMES);
             classWriter.visit(52, ACC_PUBLIC + ACC_FINAL, className, null, "java/lang/Object", null);
             classWriter.visitSource(sourceFile, null);
-            createDefaultConstructor(classWriter);
             return classWriter;
         });
         String[] exceptionsArr = exceptions == null ? null : exceptions.toArray(new String[0]);
@@ -447,12 +460,12 @@ public final class Assembler {
                     .toArray(Label[]::new));
                 MethodVisitor caseMv = mv;
                 labels.forEach(labelAndIndex -> {
-                        caseMv.visitLabel(labelAndIndex.getValue());
-                        caseMv.visitVarInsn(ALOAD, 0);
-                        caseMv.visitFieldInsn(GETFIELD, className, "property" + labelAndIndex.getKey(),
-                            "Ljava/lang/Object;");
-                        caseMv.visitInsn(ARETURN);
-                    });
+                    caseMv.visitLabel(labelAndIndex.getValue());
+                    caseMv.visitVarInsn(ALOAD, 0);
+                    caseMv.visitFieldInsn(GETFIELD, className, "property" + labelAndIndex.getKey(),
+                        "Ljava/lang/Object;");
+                    caseMv.visitInsn(ARETURN);
+                });
                 mv.visitLabel(switchEnd);
                 mv.visitInsn(ACONST_NULL);
                 mv.visitInsn(ARETURN);
@@ -1050,15 +1063,34 @@ public final class Assembler {
         mv.visitLocalVariable(name, typeDescriptor, signature, start, end, index);
     }
 
-    private MethodVisitor createDefaultConstructor(ClassWriter cw) {
-        MethodVisitor mv = cw.visitMethod(ACC_PRIVATE, "<init>", "()V", null, null);
-        mv.visitCode();
-        mv.visitVarInsn(ALOAD, 0);
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
-        mv.visitInsn(RETURN);
-        mv.visitMaxs(1, 1);
-        mv.visitEnd();
-        return mv;
+    private static void copyRuntimeClasses(String outputDirectoryName) {
+        String runtimePath = "/io/github/mmhelloworld/idris2boot/runtime";
+        Path outputDirectory = Paths.get(outputDirectoryName, runtimePath);
+        try {
+            copyFromJar(runtimePath, outputDirectory);
+        } catch (URISyntaxException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void copyFromJar(String source, Path target) throws URISyntaxException, IOException {
+        URI resource = IdrisSystem.class.getResource("").toURI();
+        FileSystem fileSystem = FileSystems.newFileSystem(resource, emptyMap());
+        Path jarPath = fileSystem.getPath(source);
+        Files.walkFileTree(jarPath, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                Path currentTarget = target.resolve(jarPath.relativize(dir).toString());
+                Files.createDirectories(currentTarget);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.copy(file, target.resolve(jarPath.relativize(file).toString()), REPLACE_EXISTING);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private void handleCreateMethod(MethodVisitor mv, List<Annotation> annotations,

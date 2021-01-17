@@ -55,15 +55,17 @@ comparing p x y = compare (p x) (p y)
 
 record Scope where
     constructor MkScope
-    index : Nat
-    parentIndex : Maybe Nat
+    index : Int
+    parentIndex : Maybe Int
     variableTypes : SortedMap String InferredType
-    variableIndices : SortedMap String Nat
+    allVariableTypes : SortedMap Int InferredType
+    variableIndices : SortedMap String Int
+    allVariableIndices : SortedMap String Int
     returnType : InferredType
-    nextVariableIndex : Nat
+    nextVariableIndex : Int
     lineNumbers : (Int, Int)
     labels : (String, String)
-    childIndices : List Nat
+    childIndices : List Int
 
 public export
 record InferredFunctionType where
@@ -75,8 +77,8 @@ record Function where
     constructor MkFunction
     idrisName : Jname
     inferredFunctionType : InferredFunctionType
-    scopes : SortedMap Nat Scope
-    dynamicVariableCounter : Nat
+    scopes : SortedMap Int Scope
+    dynamicVariableCounter : Int
     jvmClassMethodName : Jname
     tailCallCategory : TailCallCategory
     optimizedBody : NamedCExp
@@ -87,10 +89,10 @@ record AsmState where
     functions :  SortedMap Jname Function
     currentIdrisFunction : Function
     currentMethodName : Jname
-    currentScopeIndex : Nat
-    scopeCounter : Nat
-    labelCounter : Nat
-    lambdaCounter : Nat
+    currentScopeIndex : Int
+    scopeCounter : Int
+    labelCounter : Int
+    lambdaCounter : Int
     lineNumberLabels : SortedMap Int String
     assembler : Assembler
 
@@ -168,7 +170,7 @@ data Asm : Type -> Type where
     Aaload : Asm ()
     Aastore : Asm ()
     Aconstnull : Asm ()
-    Aload : Nat -> Asm ()
+    Aload : Int -> Asm ()
     Anewarray : (descriptor: String) -> Asm ()
 
     Anewbooleanarray : Asm ()
@@ -182,7 +184,7 @@ data Asm : Type -> Type where
 
     Arraylength : Asm ()
     Areturn : Asm ()
-    Astore : Nat -> Asm ()
+    Astore : Int -> Asm ()
     Baload : Asm ()
     Bastore : Asm ()
     Caload : Asm ()
@@ -200,7 +202,7 @@ data Asm : Type -> Type where
                     (signature: Maybe String) -> (exceptions: Maybe (List String)) ->
                     (annotations: List Asm.Annotation) ->
                     (parameterAnnotations: List (List Asm.Annotation)) -> Asm ()
-    CreateIdrisConstructorClass : String -> Bool -> Nat -> Asm ()
+    CreateIdrisConstructorClass : String -> Bool -> Int -> Asm ()
     D2i : Asm ()
     D2f : Asm ()
     Dadd : Asm ()
@@ -211,12 +213,12 @@ data Asm : Type -> Type where
     Dconst : Double -> Asm ()
     Ddiv : Asm ()
     Debug : String -> Asm ()
-    Dload : Nat -> Asm ()
+    Dload : Int -> Asm ()
     Dmul : Asm ()
     Dneg : Asm ()
     Drem : Asm ()
     Dreturn : Asm ()
-    Dstore : Nat -> Asm ()
+    Dstore : Int -> Asm ()
     Dsub : Asm ()
     Dup : Asm ()
     Error : String -> Asm ()
@@ -226,10 +228,10 @@ data Asm : Type -> Type where
     Fconst : Double -> Asm ()
     Field : FieldInstructionType -> (className: String) -> (fieldName: String) -> (descriptor: String) -> Asm ()
     FieldEnd : Asm ()
-    Fload : Nat -> Asm ()
-    Frame : FrameType -> Nat -> (signatures: List String) -> Nat -> (signatures: List String) -> Asm ()
+    Fload : Int -> Asm ()
+    Frame : FrameType -> Int -> (signatures: List String) -> Int -> (signatures: List String) -> Asm ()
     Freturn : Asm ()
-    Fstore : Nat -> Asm ()
+    Fstore : Int -> Asm ()
     Goto : (label: String) -> Asm ()
     I2b : Asm ()
     I2c : Asm ()
@@ -259,7 +261,7 @@ data Asm : Type -> Type where
     Ifne : (label: String) -> Asm ()
     Ifnonnull : (label: String) -> Asm ()
     Ifnull : (label: String) -> Asm ()
-    Iload : Nat -> Asm ()
+    Iload : Int -> Asm ()
     Imul : Asm ()
     Ineg : Asm ()
     InstanceOf : (className: String) -> Asm ()
@@ -270,7 +272,7 @@ data Asm : Type -> Type where
     Ireturn : Asm ()
     Ishl : Asm ()
     Ishr : Asm ()
-    Istore : Nat -> Asm ()
+    Istore : Int -> Asm ()
     Isub : Asm ()
     Iushr : Asm ()
     L2i : Asm ()
@@ -286,22 +288,22 @@ data Asm : Type -> Type where
     Ldc : Asm.Constant -> Asm ()
     Ldiv : Asm ()
     LineNumber : Int -> String -> Asm ()
-    Lload : Nat  -> Asm ()
+    Lload : Int  -> Asm ()
     Lmul : Asm ()
     LocalVariable : (name: String) -> (descriptor: String) -> (signature: Maybe String) -> (startLabel: String) ->
-                        (endLabel: String) -> (index: Nat) -> Asm ()
+                        (endLabel: String) -> (index: Int) -> Asm ()
     LookupSwitch : (defaultLabel: String) -> (labels: List String) -> (cases: List Int) -> Asm ()
     Lrem : Asm ()
     Lreturn : Asm ()
     Lshl : Asm ()
     Lshr : Asm ()
-    Lstore : Nat -> Asm ()
+    Lstore : Int -> Asm ()
     Lsub : Asm ()
     Lushr : Asm ()
     MaxStackAndLocal : Int -> Int -> Asm ()
     MethodCodeStart : Asm ()
     MethodCodeEnd : Asm ()
-    Multianewarray : (descriptor: String) -> Nat -> Asm ()
+    Multianewarray : (descriptor: String) -> Int -> Asm ()
     New : (className: String) -> Asm ()
     Pop : Asm ()
     Pop2 : Asm ()
@@ -323,7 +325,9 @@ Show Scope where
         ("index", show $ index scope),
         ("parentIndex", show $ parentIndex scope),
         ("variableTypes", show $ variableTypes scope),
+        ("allVariableTypes", show $ allVariableTypes scope),
         ("variableIndices", show $ variableIndices scope),
+        ("allVariableIndices", show $ allVariableIndices scope),
         ("nextVariableIndex", show $ nextVariableIndex scope),
         ("lineNumbers", show $ lineNumbers scope),
         ("labels", show $ labels scope),
@@ -433,7 +437,7 @@ getAndUpdateFunction f = do
 updateCurrentFunction : (Function -> Function) -> Asm ()
 updateCurrentFunction f = do getAndUpdateFunction f; Pure ()
 
-getScopes : Asm (SortedMap Nat Scope)
+getScopes : Asm (SortedMap Int Scope)
 getScopes = scopes <$> getCurrentFunction
 
 loadFunction : Jname -> Asm ()
@@ -459,16 +463,16 @@ getFunctionReturnType functionName =  do
     state <- GetState
     Pure $ maybe IUnknown (returnType . inferredFunctionType) $ SortedMap.lookup functionName (functions state)
 
-getCurrentScopeIndex : Asm Nat
+getCurrentScopeIndex : Asm Int
 getCurrentScopeIndex = currentScopeIndex <$> GetState
 
-updateCurrentScopeIndex : Nat -> Asm ()
+updateCurrentScopeIndex : Int -> Asm ()
 updateCurrentScopeIndex scopeIndex = updateState $ record {currentScopeIndex = scopeIndex}
 
-newScopeIndex : Asm Nat
+newScopeIndex : Asm Int
 newScopeIndex = scopeCounter <$> (getAndUpdateState $ record {scopeCounter $= (+1)})
 
-newDynamicVariableIndex : Asm Nat
+newDynamicVariableIndex : Asm Int
 newDynamicVariableIndex = dynamicVariableCounter <$> (getAndUpdateFunction $ record {dynamicVariableCounter $= (+1)})
 
 resetScope : Asm ()
@@ -478,21 +482,21 @@ resetScope = updateState $
         currentScopeIndex = 0
     }
 
-updateScope : Nat -> Scope -> Asm ()
-updateScope scopeIndex scope = updateCurrentFunction $ record {scopes $= SortedMap.insert scopeIndex scope}
+saveScope : Scope -> Asm ()
+saveScope scope = updateCurrentFunction $ record {scopes $= SortedMap.insert (index scope) scope}
 
-findScope : Nat -> Asm (Maybe Scope)
+findScope : Int -> Asm (Maybe Scope)
 findScope scopeIndex = do
    scopes <- scopes <$> getCurrentFunction
    Pure $ SortedMap.lookup scopeIndex scopes
 
-getScope : Nat -> Asm Scope
+getScope : Int -> Asm Scope
 getScope scopeIndex = Pure $ fromMaybe (crash ("Unknown scope " ++ show scopeIndex)) !(findScope scopeIndex)
 
-addScopeChild : Nat -> Nat -> Asm ()
+addScopeChild : Int -> Int -> Asm ()
 addScopeChild parentScopeIndex childScopeIndex = do
     scope <- getScope parentScopeIndex
-    updateScope parentScopeIndex $ record {childIndices $= (childScopeIndex ::)} scope
+    saveScope $ record {childIndices $= (childScopeIndex ::)} scope
 
 getJvmMethodNameForIdrisName : Jname -> Asm Jname
 getJvmMethodNameForIdrisName idrisName = jvmClassMethodName <$> (getFunction idrisName)
@@ -540,31 +544,31 @@ getClassName = className . currentMethodName <$> GetState
 getMethodName : Asm String
 getMethodName = methodName . currentMethodName <$> GetState
 
-freshLambdaIndex : Asm Nat
+freshLambdaIndex : Asm Int
 freshLambdaIndex = lambdaCounter <$> (getAndUpdateState $ record {lambdaCounter $= (+1)})
 
-setScopeCounter : Nat -> Asm ()
+setScopeCounter : Int -> Asm ()
 setScopeCounter scopeCounter = updateState $ record {scopeCounter = scopeCounter}
 
-setLambdaCounter : Nat -> Asm ()
+setLambdaCounter : Int -> Asm ()
 setLambdaCounter lambdaCounter = updateState $ record {lambdaCounter = lambdaCounter}
 
-updateScopeStartLabel : Nat -> String -> Asm ()
+updateScopeStartLabel : Int -> String -> Asm ()
 updateScopeStartLabel scopeIndex label = do
     scope <- getScope scopeIndex
-    updateScope scopeIndex (record {labels $= (\(_, endLabel) => (label, endLabel))} scope)
+    saveScope $ record {labels $= (\(_, endLabel) => (label, endLabel))} scope
 
-updateScopeEndLabel : Nat -> String -> Asm ()
+updateScopeEndLabel : Int -> String -> Asm ()
 updateScopeEndLabel scopeIndex label = do
     scope <- getScope scopeIndex
-    updateScope scopeIndex (record {labels $= (\(startLabel, _) => (startLabel, label))} scope)
+    saveScope $ record {labels $= (\(startLabel, _) => (startLabel, label))} scope
 
 createVariable : String -> Asm ()
 createVariable var = do
     scopeIndex <- getCurrentScopeIndex
     scope <- getScope scopeIndex
     let variableIndex = nextVariableIndex scope
-    updateScope scopeIndex $ record {
+    saveScope $ record {
             variableTypes $= SortedMap.insert var IUnknown,
             variableIndices $= SortedMap.insert var variableIndex,
             nextVariableIndex $= (+1)
@@ -577,26 +581,33 @@ generateVariable prefix = do
     createVariable variableName
     Pure variableName
 
-getVariables : Nat -> Asm (List String)
-getVariables scopeIndex = do
-    variableAndIndices <- go SortedMap.empty scopeIndex
-    Pure (fst <$> sortBy comparingVariableIndices (SortedMap.toList variableAndIndices))
+retrieveVariableIndicesByName : Int -> Asm (SortedMap String Int)
+retrieveVariableIndicesByName scopeIndex = go SortedMap.empty SortedMap.empty scopeIndex
   where
-    comparingVariableIndices : (String, Nat) -> (String, Nat) -> Ordering
+    go : SortedMap String Int -> SortedMap Int String -> Int -> Asm (SortedMap String Int)
+    go indicesByName namesByIndex scopeIndex = do
+        scope <- getScope scopeIndex
+        let indexAndNames = filter notExists $ SortedMap.toList $ variableIndices scope
+        let newIndicesByName = SortedMap.insertFrom indexAndNames indicesByName
+        let nameAndIndices = swap <$> indexAndNames
+        let newNamesByIndex = SortedMap.insertFrom nameAndIndices namesByIndex
+        maybe (Pure newIndicesByName) (go newIndicesByName newNamesByIndex) (parentIndex scope)
+      where
+        notExists : (String, Int) -> Bool
+        notExists (var, index) = isNothing (SortedMap.lookup var indicesByName) &&
+            isNothing (SortedMap.lookup index namesByIndex)
+
+retrieveVariables : Int -> Asm (List String)
+retrieveVariables scopeIndex = do
+    variableIndicesByName <- retrieveVariableIndicesByName scopeIndex
+    Pure (fst <$> sortBy comparingVariableIndices (SortedMap.toList variableIndicesByName))
+  where
+    comparingVariableIndices : (String, Int) -> (String, Int) -> Ordering
     comparingVariableIndices (_, index1) (_, index2) = compare index1 index2
 
-    go : SortedMap String Nat -> Nat -> Asm (SortedMap String Nat)
-    go acc scopeIndex = do
-        scope <- getScope scopeIndex
-        let parentScopeIndex = parentIndex scope
-        let scopeVariables = filter (\(var, _) => not . isJust $ SortedMap.lookup var acc) $
-            SortedMap.toList $ variableIndices scope
-        let variables = SortedMap.insertFrom scopeVariables acc
-        maybe (Pure variables) (go variables) parentScopeIndex
-
-getVariableIndexAtScope : Nat -> String -> Asm Nat
-getVariableIndexAtScope currentScopeIndex name = go currentScopeIndex where
-    go : Nat -> Asm Nat
+retrieveVariableIndexAtScope : Int -> String -> Asm Int
+retrieveVariableIndexAtScope currentScopeIndex name = go currentScopeIndex where
+    go : Int -> Asm Int
     go scopeIndex = do
         scope <- getScope scopeIndex
         case SortedMap.lookup name $ variableIndices scope of
@@ -605,38 +616,87 @@ getVariableIndexAtScope currentScopeIndex name = go currentScopeIndex where
                 Just parentScopeIndex => go parentScopeIndex
                 Nothing => Throw emptyFC ("Unknown var " ++ name ++ " at index " ++ show currentScopeIndex)
 
-getVariableIndex : String -> Asm Nat
-getVariableIndex name = getVariableIndexAtScope !getCurrentScopeIndex name
+retrieveVariableIndex : String -> Asm Int
+retrieveVariableIndex name = retrieveVariableIndexAtScope !getCurrentScopeIndex name
 
-getVariableTypeAtScope : Nat -> String -> Asm InferredType
-getVariableTypeAtScope scopeIndex name = do
+retrieveVariableTypeAtScope : Int -> String -> Asm InferredType
+retrieveVariableTypeAtScope scopeIndex name = do
     scope <- getScope scopeIndex
     case SortedMap.lookup name $ variableTypes scope of
         Just ty => pure ty
         Nothing => case parentIndex scope of
-            Just parentScope => getVariableTypeAtScope parentScope name
+            Just parentScope => retrieveVariableTypeAtScope parentScope name
             Nothing => pure IUnknown
 
-getVariableType : String -> Asm InferredType
-getVariableType name = getVariableTypeAtScope !getCurrentScopeIndex name
+retrieveVariableType : String -> Asm InferredType
+retrieveVariableType name = retrieveVariableTypeAtScope !getCurrentScopeIndex name
 
-getVariableTypesAtScope : Nat -> Asm (SortedMap Nat InferredType)
-getVariableTypesAtScope scopeIndex = go SortedMap.empty !(getVariables scopeIndex) where
-    go : SortedMap Nat InferredType -> List String -> Asm (SortedMap Nat InferredType)
+retrieveVariableTypesAtScope : Int -> Asm (SortedMap Int InferredType)
+retrieveVariableTypesAtScope scopeIndex = go SortedMap.empty !(retrieveVariables scopeIndex) where
+    go : SortedMap Int InferredType -> List String -> Asm (SortedMap Int InferredType)
     go acc [] = Pure acc
     go acc (var :: vars) = do
-        varIndex <- getVariableIndexAtScope scopeIndex var
-        ty <- getVariableTypeAtScope scopeIndex var
+        varIndex <- retrieveVariableIndexAtScope scopeIndex var
+        ty <- retrieveVariableTypeAtScope scopeIndex var
         case SortedMap.lookup varIndex acc of
             Nothing => go (SortedMap.insert varIndex ty acc) vars
             _ => go acc vars
 
-getVariableTypes : Asm (SortedMap Nat InferredType)
+getVariableIndicesByName : Int -> Asm (SortedMap String Int)
+getVariableIndicesByName scopeIndex = allVariableIndices <$> getScope scopeIndex
+
+getVariables : Int -> Asm (List String)
+getVariables scopeIndex = do
+    variableIndicesByName <- getVariableIndicesByName scopeIndex
+    Pure (fst <$> sortBy comparingVariableIndices (SortedMap.toList variableIndicesByName))
+  where
+    comparingVariableIndices : (String, Int) -> (String, Int) -> Ordering
+    comparingVariableIndices (_, index1) (_, index2) = compare index1 index2
+
+getVariableIndexAtScope : Int -> String -> Asm Int
+getVariableIndexAtScope currentScopeIndex name = do
+    variableIndicesByName <- getVariableIndicesByName currentScopeIndex
+    case SortedMap.lookup name variableIndicesByName of
+        Just index => pure index
+        Nothing => Throw emptyFC ("Unknown var " ++ name ++ " at index " ++ show currentScopeIndex)
+
+getVariableIndex : String -> Asm Int
+getVariableIndex name = getVariableIndexAtScope !getCurrentScopeIndex name
+
+getVariableTypesAtScope : Int -> Asm (SortedMap Int InferredType)
+getVariableTypesAtScope scopeIndex = allVariableTypes <$> getScope scopeIndex
+
+getVariableTypes : Asm (SortedMap Int InferredType)
 getVariableTypes = getVariableTypesAtScope !getCurrentScopeIndex
+
+getVariableTypeAtScope : Int -> String -> Asm InferredType
+getVariableTypeAtScope scopeIndex name = do
+    scope <- getScope scopeIndex
+    variableIndices <- getVariableIndicesByName scopeIndex
+    case SortedMap.lookup name variableIndices of
+        Just index => do
+            variableTypes <- getVariableTypesAtScope scopeIndex
+            Pure $ fromMaybe IUnknown $ SortedMap.lookup index variableTypes
+        Nothing => Pure IUnknown
+
+getVariableType : String -> Asm InferredType
+getVariableType name = getVariableTypeAtScope !getCurrentScopeIndex name
+
+updateScopeVariableTypes : Asm ()
+updateScopeVariableTypes = go (scopeCounter !GetState - 1) where
+    go : Int -> Asm ()
+    go scopeIndex =
+        if scopeIndex < 0 then Pure ()
+        else do
+            variableTypes <- retrieveVariableTypesAtScope scopeIndex
+            variableIndices <- retrieveVariableIndicesByName scopeIndex
+            scope <- getScope scopeIndex
+            saveScope $ record {allVariableTypes = variableTypes, allVariableIndices = variableIndices} scope
+            go (scopeIndex - 1)
 
 getVariableScope : String -> Asm Scope
 getVariableScope name = go !getCurrentScopeIndex where
-    go : Nat -> Asm Scope
+    go : Int -> Asm Scope
     go scopeIndex = do
         scope <- getScope scopeIndex
         case SortedMap.lookup name $ variableTypes scope of
@@ -650,15 +710,25 @@ addVariableType var IUnknown = Pure IUnknown
 addVariableType var ty = do
     scope <- getVariableScope var
     let scopeIndex = index scope
-    existingTy <- getVariableTypeAtScope scopeIndex var
+    existingTy <- retrieveVariableTypeAtScope scopeIndex var
     let newTy = existingTy <+> ty
-    updateScope scopeIndex (record {variableTypes $= SortedMap.insert var newTy} scope)
+    saveScope $ record {variableTypes $= SortedMap.insert var newTy} scope
     Pure newTy
 
-getLambdaImplementationMethodName : String -> Asm String
+getLambdaImplementationMethodName : String -> Asm Jname
 getLambdaImplementationMethodName prefix = do
-    let declaringMethodName = methodName !getRootMethodName
-    pure $ prefix ++ "$" ++ declaringMethodName ++ "$" ++ show !freshLambdaIndex
+    lambdaIndex <- freshLambdaIndex
+    rootMethodJname <- getRootMethodName
+    let declaringMethodName = methodName rootMethodJname
+    let rootMethodClassName = className rootMethodJname
+    let lambdaClassName =
+        if lambdaIndex >= 5 then
+            rootMethodClassName ++ "$" ++ prefix ++ "$" ++ declaringMethodName ++ "$" ++ show (lambdaIndex `div` 500)
+        else rootMethodClassName
+    let lambdaMethodName =
+        if lambdaIndex >= 5 then prefix ++ "$" ++ show lambdaIndex
+        else prefix ++ "$" ++ declaringMethodName ++ "$" ++ show lambdaIndex
+    Pure $ Jqualified lambdaClassName lambdaMethodName
 
 getJvmTypeDescriptor : InferredType -> String
 getJvmTypeDescriptor IByte        = "B"
@@ -968,7 +1038,7 @@ runAsm state Aastore = assemble state $ invokeInstance "aastore" (Assembler -> J
 runAsm state Aconstnull = assemble state $ invokeInstance "aconstnull" (Assembler -> JVM_IO ()) (assembler state)
 
 runAsm state (Aload n) = assemble state $
-    invokeInstance "aload" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    invokeInstance "aload" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 
 runAsm state (Anewarray desc) = assemble state $
     invokeInstance "anewarray" (Assembler -> String -> JVM_IO ()) (assembler state) desc
@@ -991,7 +1061,7 @@ runAsm state Anewdoublearray  = assemble state $
 runAsm state Arraylength      = assemble state $ invokeInstance "arraylength" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Areturn          = assemble state $ invokeInstance "areturn" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (Astore n)       = assemble state $
-    invokeInstance "astore" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    invokeInstance "astore" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 runAsm state Baload           = assemble state $ invokeInstance "baload" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Bastore          = assemble state $ invokeInstance "bastore" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Caload           = assemble state $ invokeInstance "caload" (Assembler -> JVM_IO ()) (assembler state)
@@ -1062,7 +1132,7 @@ runAsm state (CreateMethod accs sourceFileName className methodName desc sig exc
 
 runAsm state (CreateIdrisConstructorClass className isStringConstructor constructorParameterCount) =
     assemble state $ invokeInstance "createIdrisConstructorClass" (Assembler -> String -> Bool -> Int -> JVM_IO ())
-        (assembler state) className isStringConstructor (cast constructorParameterCount)
+        (assembler state) className isStringConstructor constructorParameterCount
 
 runAsm state D2i = assemble state $ invokeInstance "d2i" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state D2f = assemble state $ invokeInstance "d2f" (Assembler -> JVM_IO ()) (assembler state)
@@ -1077,13 +1147,13 @@ runAsm state Ddiv = assemble state $ invokeInstance "ddiv" (Assembler -> JVM_IO 
 runAsm state (Debug message) =
     assemble state $ invokeInstance "debug" (Assembler -> String -> JVM_IO ()) (assembler state) message
 runAsm state (Dload n) =
-    assemble state $ invokeInstance "dload" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    assemble state $ invokeInstance "dload" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 runAsm state Dmul = assemble state $ invokeInstance "dmul" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Dneg = assemble state $ invokeInstance "dneg" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Drem = assemble state $ invokeInstance "drem" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Dreturn = assemble state $ invokeInstance "dreturn" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (Dstore n) =
-    assemble state $ invokeInstance "dstore" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    assemble state $ invokeInstance "dstore" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 runAsm state Dsub = assemble state $ invokeInstance "dsub" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Dup = assemble state $ invokeInstance "dup" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (Error err) =
@@ -1107,7 +1177,7 @@ runAsm state (Field finsType cname fname desc) = assemble state $ do
 runAsm state FieldEnd = assemble state $ invokeInstance "fieldEnd" (Assembler -> JVM_IO ()) (assembler state)
 
 runAsm state (Fload n) =
-    assemble state $ invokeInstance "fload" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    assemble state $ invokeInstance "fload" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 
 runAsm state (Frame frameType nLocal localSigs nStack stackSigs) = assemble state $ do
   let ftypeNum = frameTypeNum frameType
@@ -1118,14 +1188,14 @@ runAsm state (Frame frameType nLocal localSigs nStack stackSigs) = assemble stat
     (Assembler -> Int -> Int -> JList -> Int -> JList -> JVM_IO ())
     (assembler state)
     ftypeNum
-    (cast nLocal)
+    nLocal
     (believe_me jlocalSigs)
-    (cast nStack)
+    nStack
     (believe_me jstackSigs)
 
 runAsm state Freturn = assemble state $ invokeInstance "freturn" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (Fstore n) =
-    assemble state $ invokeInstance "fstore" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    assemble state $ invokeInstance "fstore" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 
 runAsm state (Goto label) =
     assemble state $ invokeInstance "gotoLabel" (Assembler -> String -> JVM_IO ()) (assembler state) label
@@ -1173,7 +1243,7 @@ runAsm state (Ifnonnull label) =
 runAsm state (Ifnull label) =
     assemble state $ invokeInstance "ifnull" (Assembler -> String -> JVM_IO ()) (assembler state) label
 runAsm state (Iload n) =
-    assemble state $ invokeInstance "iload" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    assemble state $ invokeInstance "iload" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 runAsm state Imul = assemble state $ invokeInstance "imul" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Ineg = assemble state $ invokeInstance "ineg" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (InstanceOf className) =
@@ -1208,7 +1278,7 @@ runAsm state Ireturn = assemble state $ invokeInstance "ireturn" (Assembler -> J
 runAsm state Ishl = assemble state $ invokeInstance "ishl" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Ishr = assemble state $ invokeInstance "ishr" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (Istore n) = assemble state $
-    invokeInstance "istore" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    invokeInstance "istore" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 runAsm state Isub = assemble state $ invokeInstance "isub" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Iushr = assemble state $ invokeInstance "iushr" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state L2i = assemble state $ invokeInstance "l2i" (Assembler -> JVM_IO ()) (assembler state)
@@ -1235,7 +1305,7 @@ runAsm state (LineNumber lineNumber label) = assemble state $
     invokeInstance "lineNumber" (Assembler -> Int -> String -> JVM_IO ()) (assembler state) lineNumber label
 
 runAsm state (Lload n) = assemble state $
-    invokeInstance "lload" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    invokeInstance "lload" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 runAsm state Lmul = assemble state $ invokeInstance "lmul" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (LookupSwitch defaultLabel labels cases) = assemble state $ do
   jlabels <- ArrayList.fromList labels
@@ -1258,14 +1328,14 @@ runAsm state (LocalVariable name descriptor signature startLabel endLabel index)
         (maybeToNullableString signature)
         startLabel
         endLabel
-        (cast index)
+        index
 
 runAsm state Lrem = assemble state $ invokeInstance "lrem" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Lreturn = assemble state $ invokeInstance "lreturn" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Lshl = assemble state $ invokeInstance "lshl" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Lshr = assemble state $ invokeInstance "lshr" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (Lstore n) = assemble state $
-    invokeInstance "lstore" (Assembler -> Int -> JVM_IO ()) (assembler state) (cast n)
+    invokeInstance "lstore" (Assembler -> Int -> JVM_IO ()) (assembler state) n
 runAsm state Lsub = assemble state $ invokeInstance "lsub" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state Lushr = assemble state $ invokeInstance "lushr" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (MaxStackAndLocal stack local) = assemble state $
@@ -1274,7 +1344,7 @@ runAsm state MethodCodeStart = assemble state $
     invokeInstance "methodCodeStart" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state MethodCodeEnd = assemble state $ invokeInstance "methodCodeEnd" (Assembler -> JVM_IO ()) (assembler state)
 runAsm state (Multianewarray desc dims) = assemble state $
-    invokeInstance "multiANewArray" (Assembler -> String -> Int -> JVM_IO ()) (assembler state) desc (cast dims)
+    invokeInstance "multiANewArray" (Assembler -> String -> Int -> JVM_IO ()) (assembler state) desc dims
 runAsm state (New cname) = assemble state $
     invokeInstance "asmNew" (Assembler -> String -> JVM_IO ()) (assembler state) cname
 runAsm state Pop = assemble state $ invokeInstance "pop" (Assembler -> JVM_IO ()) (assembler state)

@@ -8,6 +8,9 @@ import java.util.NoSuchElementException;
 import static java.util.Collections.emptyListIterator;
 
 public abstract class IdrisList extends AbstractSequentialList<Object> implements IdrisObject {
+    private IdrisList() {
+    }
+
     public abstract int getConstructorId();
 
     public static IdrisList fromIterable(Iterable<Object> iterable) {
@@ -37,7 +40,7 @@ public abstract class IdrisList extends AbstractSequentialList<Object> implement
             .toString();
     }
 
-    public static class Nil extends IdrisList {
+    public static final class Nil extends IdrisList {
         public static final Nil INSTANCE = new Nil();
 
         private Nil() {
@@ -64,7 +67,7 @@ public abstract class IdrisList extends AbstractSequentialList<Object> implement
         }
     }
 
-    public static class Cons extends IdrisList {
+    public static final class Cons extends IdrisList {
         private final Object head;
         private final IdrisList tail;
 
