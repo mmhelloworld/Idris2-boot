@@ -126,17 +126,16 @@ mutual
             liftedAlts = liftToLambdaCon <$> alts
             liftedDef = liftToLambda True <$> def
         in NmApp fc (NmLam fc var (NmConCase fc (NmLocal fc var) liftedAlts liftedDef)) [liftToLambda False sc]
-
     liftToLambda True (NmConCase fc sc alts def) =
-        NmConCase fc (liftToLambda False sc) (liftToLambdaCon <$> alts) (liftToLambda True <$> def)
+        NmConCase fc (liftToLambda False sc) (liftToLambdaCon <$> alts) (liftToLambdaDefault <$> def)
     liftToLambda _ expr@(NmConstCase fc sc [] Nothing) = expr
     liftToLambda False (NmConstCase fc sc alts def) =
         let var = UN extractedMethodArgumentName
             liftedAlts = liftToLambdaConst <$> alts
-            liftedDef = liftToLambda True <$> def
+            liftedDef = liftToLambdaDefault <$> def
         in NmApp fc (NmLam fc var $ NmConstCase fc (NmLocal fc var) liftedAlts liftedDef) [liftToLambda False sc]
     liftToLambda True (NmConstCase fc sc alts def) =
-        NmConstCase fc (liftToLambda False sc) (liftToLambdaConst <$> alts) (liftToLambda True <$> def)
+        NmConstCase fc (liftToLambda False sc) (liftToLambdaConst <$> alts) (liftToLambdaDefault <$> def)
     liftToLambda _ (NmLam fc param sc) = NmLam fc param $ liftToLambda True sc
     liftToLambda _ (NmApp fc f args) = NmApp fc (liftToLambda False f) (liftToLambda False <$> args)
     liftToLambda _ expr@(NmCon fc name tag args) = NmCon fc name tag $ (liftToLambda False <$> args)
@@ -146,10 +145,19 @@ mutual
     liftToLambda _ (NmDelay fc t) = NmDelay fc $ liftToLambda False t
     liftToLambda _ expr = expr
 
+    liftToLambdaDefault : NamedCExp -> NamedCExp
+    liftToLambdaDefault body@(NmConstCase _ _ _ _) = liftToLambda False body
+    liftToLambdaDefault body@(NmConCase _ _ _ _) = liftToLambda False body
+    liftToLambdaDefault body = liftToLambda True body
+
     liftToLambdaCon : NamedConAlt -> NamedConAlt
+    liftToLambdaCon (MkNConAlt n tag args body@(NmConstCase _ _ _ _)) = MkNConAlt n tag args $ liftToLambda False body
+    liftToLambdaCon (MkNConAlt n tag args body@(NmConCase _ _ _ _)) = MkNConAlt n tag args $ liftToLambda False body
     liftToLambdaCon (MkNConAlt n tag args body) = MkNConAlt n tag args $ liftToLambda True body
 
     liftToLambdaConst : NamedConstAlt -> NamedConstAlt
+    liftToLambdaConst (MkNConstAlt constant body@(NmConstCase _ _ _ _)) = MkNConstAlt constant (liftToLambda False body)
+    liftToLambdaConst (MkNConstAlt constant body@(NmConCase _ _ _ _)) = MkNConstAlt constant (liftToLambda False body)
     liftToLambdaConst (MkNConstAlt constant body) = MkNConstAlt constant (liftToLambda True body)
 
 mutual
@@ -385,17 +393,18 @@ enterInferenceScope lineNumberStart lineNumberEnd = do
     parentScopeIndex <- getCurrentScopeIndex
     scopeIndex <- newScopeIndex
     parentScope <- getScope parentScopeIndex
-    let newScope = MkScope scopeIndex (Just parentScopeIndex) SortedMap.empty SortedMap.empty IUnknown
-        (nextVariableIndex parentScope) (lineNumberStart, lineNumberEnd) ("", "") []
+    let newScope = MkScope scopeIndex (Just parentScopeIndex) SortedMap.empty SortedMap.empty SortedMap.empty
+        SortedMap.empty IUnknown (nextVariableIndex parentScope) (lineNumberStart, lineNumberEnd) ("", "") []
     addScopeChild parentScopeIndex scopeIndex
-    updateScope scopeIndex newScope
+    saveScope newScope
     updateCurrentScopeIndex scopeIndex
 
 createLambdaClosureScope : Int -> Int -> List String -> Scope -> Asm Scope
 createLambdaClosureScope scopeIndex childScopeIndex closureVariables parentScope = do
         let lambdaClosureVariableIndices = SortedMap.fromList $ getLambdaClosureVariableIndices [] 0 closureVariables
-        Pure $ MkScope scopeIndex (Just $ index parentScope) SortedMap.empty lambdaClosureVariableIndices IUnknown
-                (cast $ length closureVariables) (lineNumbers parentScope) ("", "") [childScopeIndex]
+        Pure $ MkScope scopeIndex (Just $ index parentScope) SortedMap.empty SortedMap.empty
+            lambdaClosureVariableIndices SortedMap.empty IUnknown (cast $ length closureVariables) (lineNumbers parentScope)
+            ("", "") [childScopeIndex]
     where
         getLambdaClosureVariableIndices : List (String, Int) -> Int -> List String -> List (String, Int)
         getLambdaClosureVariableIndices acc _ [] = acc
@@ -408,20 +417,21 @@ enterInferenceLambdaScope lineNumberStart lineNumberEnd parameterName expr = do
         scopeIndex <- newScopeIndex
         let boundVariables = maybe SortedSet.empty (flip SortedSet.insert SortedSet.empty . jvmSimpleName) parameterName
         let freeVariables = getFreeVariables boundVariables expr
-        let usedVariables = filter (flip SortedSet.contains freeVariables) !(getVariables parentScopeIndex)
+        let usedVariables = filter (flip SortedSet.contains freeVariables) !(retrieveVariables parentScopeIndex)
         newScope <- case usedVariables  of
             nonEmptyUsedVariables@(_ :: _) => do
                 parentScope <- getScope parentScopeIndex
                 lambdaParentScopeIndex <- newScopeIndex
                 closureScope <- createLambdaClosureScope lambdaParentScopeIndex scopeIndex nonEmptyUsedVariables
                     parentScope
-                updateScope lambdaParentScopeIndex closureScope
+                saveScope closureScope
                 let closureVariableCount = nextVariableIndex closureScope
-                Pure $ MkScope scopeIndex (Just lambdaParentScopeIndex) SortedMap.empty
-                    SortedMap.empty IUnknown closureVariableCount (lineNumberStart, lineNumberEnd) ("", "") []
-            [] => Pure $ MkScope scopeIndex Nothing SortedMap.empty SortedMap.empty
+                Pure $ MkScope scopeIndex (Just lambdaParentScopeIndex) SortedMap.empty SortedMap.empty
+                    SortedMap.empty SortedMap.empty IUnknown closureVariableCount (lineNumberStart, lineNumberEnd)
+                    ("", "") []
+            [] => Pure $ MkScope scopeIndex Nothing SortedMap.empty SortedMap.empty SortedMap.empty SortedMap.empty
                 IUnknown 0 (lineNumberStart, lineNumberEnd) ("", "") []
-        updateScope scopeIndex newScope
+        saveScope newScope
         updateCurrentScopeIndex scopeIndex
 
 withInferenceScope : Int -> Int -> Asm result -> Asm result
@@ -708,7 +718,7 @@ mutual
             maybe (Pure ()) id parameterValueExpr
             lambdaBodyReturnType <- inferExpr IUnknown expr
             currentScope <- getScope !getCurrentScopeIndex
-            updateScope (index currentScope) $ record {returnType = lambdaBodyReturnType} currentScope
+            saveScope $ record {returnType = lambdaBodyReturnType} currentScope
             Pure lambdaBodyReturnType
         Pure $ if hasParameterValue then lambdaBodyReturnType
             else getLambdaInterfaceType lambdaType lambdaBodyReturnType
@@ -772,7 +782,7 @@ mutual
         case args of
             [] => Pure exprTy
             args@(_ :: argsTail) => do
-                types <- getVariableTypes
+                types <- retrieveVariableTypesAtScope !getCurrentScopeIndex
                 let argumentNameByIndices = SortedMap.fromList (map swap $ toList $ variableIndices !(getScope 0))
                 traverse (inferSelfTailCallParameter types argumentNameByIndices) $
                     List.zip args [0 .. the Int $ cast $ length argsTail]
@@ -973,18 +983,18 @@ inferDef idrisName fc (MkNmFun args expr) = do
         setCurrentFunction function
         updateState $ record { functions $= SortedMap.insert jname function }
         optimizedExpr <- optimize tailCallCategory expr
-        let idrisNameString = show idrisName
-        debug $ "Inferring " ++ idrisNameString ++ "(" ++ show args ++ ")"
+        debug $ "Inferring " ++ show idrisName
         updateCurrentFunction $ record { optimizedBody = optimizedExpr }
 
         resetScope
         scopeIndex <- newScopeIndex
         let (_, lineStart, lineEnd) = getSourceLocation expr
-        let functionScope = MkScope scopeIndex Nothing argumentTypesByName argIndices IUnknown arityInt
-            (lineStart, lineEnd) ("", "") []
+        let functionScope = MkScope scopeIndex Nothing argumentTypesByName SortedMap.empty argIndices SortedMap.empty
+            IUnknown arityInt (lineStart, lineEnd) ("", "") []
 
-        updateScope scopeIndex functionScope
+        saveScope functionScope
         retTy <- inferExpr IUnknown optimizedExpr
+        updateScopeVariableTypes
         argumentTypes <- getArgumentTypes argumentNames
         let inferredFunctionType = MkInferredFunctionType retTy argumentTypes
         updateCurrentFunction $ record { inferredFunctionType = inferredFunctionType }
@@ -992,7 +1002,7 @@ inferDef idrisName fc (MkNmFun args expr) = do
         getArgumentTypes : List String -> Asm (List InferredType)
         getArgumentTypes [] = pure []
         getArgumentTypes (arg :: args) = do
-            argTy <- getVariableType arg
+            argTy <- retrieveVariableType arg
             argTys <- getArgumentTypes args
             Pure (argTy :: argTys)
 

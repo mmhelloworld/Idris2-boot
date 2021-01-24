@@ -58,7 +58,9 @@ record Scope where
     index : Int
     parentIndex : Maybe Int
     variableTypes : SortedMap String InferredType
+    allVariableTypes : SortedMap Int InferredType
     variableIndices : SortedMap String Int
+    allVariableIndices : SortedMap String Int
     returnType : InferredType
     nextVariableIndex : Int
     lineNumbers : (Int, Int)
@@ -323,7 +325,9 @@ Show Scope where
         ("index", show $ index scope),
         ("parentIndex", show $ parentIndex scope),
         ("variableTypes", show $ variableTypes scope),
+        ("allVariableTypes", show $ allVariableTypes scope),
         ("variableIndices", show $ variableIndices scope),
+        ("allVariableIndices", show $ allVariableIndices scope),
         ("nextVariableIndex", show $ nextVariableIndex scope),
         ("lineNumbers", show $ lineNumbers scope),
         ("labels", show $ labels scope),
@@ -478,8 +482,8 @@ resetScope = updateState $
         currentScopeIndex = 0
     }
 
-updateScope : Int -> Scope -> Asm ()
-updateScope scopeIndex scope = updateCurrentFunction $ record {scopes $= SortedMap.insert scopeIndex scope}
+saveScope : Scope -> Asm ()
+saveScope scope = updateCurrentFunction $ record {scopes $= SortedMap.insert (index scope) scope}
 
 findScope : Int -> Asm (Maybe Scope)
 findScope scopeIndex = do
@@ -492,7 +496,7 @@ getScope scopeIndex = Pure $ fromMaybe (crash ("Unknown scope " ++ show scopeInd
 addScopeChild : Int -> Int -> Asm ()
 addScopeChild parentScopeIndex childScopeIndex = do
     scope <- getScope parentScopeIndex
-    updateScope parentScopeIndex $ record {childIndices $= (childScopeIndex ::)} scope
+    saveScope $ record {childIndices $= (childScopeIndex ::)} scope
 
 getJvmMethodNameForIdrisName : Jname -> Asm Jname
 getJvmMethodNameForIdrisName idrisName = jvmClassMethodName <$> (getFunction idrisName)
@@ -552,19 +556,19 @@ setLambdaCounter lambdaCounter = updateState $ record {lambdaCounter = lambdaCou
 updateScopeStartLabel : Int -> String -> Asm ()
 updateScopeStartLabel scopeIndex label = do
     scope <- getScope scopeIndex
-    updateScope scopeIndex (record {labels $= (\(_, endLabel) => (label, endLabel))} scope)
+    saveScope $ record {labels $= (\(_, endLabel) => (label, endLabel))} scope
 
 updateScopeEndLabel : Int -> String -> Asm ()
 updateScopeEndLabel scopeIndex label = do
     scope <- getScope scopeIndex
-    updateScope scopeIndex (record {labels $= (\(startLabel, _) => (startLabel, label))} scope)
+    saveScope $ record {labels $= (\(startLabel, _) => (startLabel, label))} scope
 
 createVariable : String -> Asm ()
 createVariable var = do
     scopeIndex <- getCurrentScopeIndex
     scope <- getScope scopeIndex
     let variableIndex = nextVariableIndex scope
-    updateScope scopeIndex $ record {
+    saveScope $ record {
             variableTypes $= SortedMap.insert var IUnknown,
             variableIndices $= SortedMap.insert var variableIndex,
             nextVariableIndex $= (+1)
@@ -577,28 +581,32 @@ generateVariable prefix = do
     createVariable variableName
     Pure variableName
 
-getVariableIndicesByName : Int -> Asm (SortedMap String Int)
-getVariableIndicesByName scopeIndex = go SortedMap.empty scopeIndex
+retrieveVariableIndicesByName : Int -> Asm (SortedMap String Int)
+retrieveVariableIndicesByName scopeIndex = go SortedMap.empty SortedMap.empty scopeIndex
   where
-    go : SortedMap String Int -> Int -> Asm (SortedMap String Int)
-    go acc scopeIndex = do
+    go : SortedMap String Int -> SortedMap Int String -> Int -> Asm (SortedMap String Int)
+    go indicesByName namesByIndex scopeIndex = do
         scope <- getScope scopeIndex
-        let parentScopeIndex = parentIndex scope
-        let scopeVariables = filter (\(var, _) => not . isJust $ SortedMap.lookup var acc) $
-            SortedMap.toList $ variableIndices scope
-        let variables = SortedMap.insertFrom scopeVariables acc
-        maybe (Pure variables) (go variables) parentScopeIndex
+        let indexAndNames = filter notExists $ SortedMap.toList $ variableIndices scope
+        let newIndicesByName = SortedMap.insertFrom indexAndNames indicesByName
+        let nameAndIndices = swap <$> indexAndNames
+        let newNamesByIndex = SortedMap.insertFrom nameAndIndices namesByIndex
+        maybe (Pure newIndicesByName) (go newIndicesByName newNamesByIndex) (parentIndex scope)
+      where
+        notExists : (String, Int) -> Bool
+        notExists (var, index) = isNothing (SortedMap.lookup var indicesByName) &&
+            isNothing (SortedMap.lookup index namesByIndex)
 
-getVariables : Int -> Asm (List String)
-getVariables scopeIndex = do
-    variableIndicesByName <-getVariableIndicesByName scopeIndex
+retrieveVariables : Int -> Asm (List String)
+retrieveVariables scopeIndex = do
+    variableIndicesByName <- retrieveVariableIndicesByName scopeIndex
     Pure (fst <$> sortBy comparingVariableIndices (SortedMap.toList variableIndicesByName))
   where
     comparingVariableIndices : (String, Int) -> (String, Int) -> Ordering
     comparingVariableIndices (_, index1) (_, index2) = compare index1 index2
 
-getVariableIndexAtScope : Int -> String -> Asm Int
-getVariableIndexAtScope currentScopeIndex name = go currentScopeIndex where
+retrieveVariableIndexAtScope : Int -> String -> Asm Int
+retrieveVariableIndexAtScope currentScopeIndex name = go currentScopeIndex where
     go : Int -> Asm Int
     go scopeIndex = do
         scope <- getScope scopeIndex
@@ -608,34 +616,83 @@ getVariableIndexAtScope currentScopeIndex name = go currentScopeIndex where
                 Just parentScopeIndex => go parentScopeIndex
                 Nothing => Throw emptyFC ("Unknown var " ++ name ++ " at index " ++ show currentScopeIndex)
 
-getVariableIndex : String -> Asm Int
-getVariableIndex name = getVariableIndexAtScope !getCurrentScopeIndex name
+retrieveVariableIndex : String -> Asm Int
+retrieveVariableIndex name = retrieveVariableIndexAtScope !getCurrentScopeIndex name
 
-getVariableTypeAtScope : Int -> String -> Asm InferredType
-getVariableTypeAtScope scopeIndex name = do
+retrieveVariableTypeAtScope : Int -> String -> Asm InferredType
+retrieveVariableTypeAtScope scopeIndex name = do
     scope <- getScope scopeIndex
     case SortedMap.lookup name $ variableTypes scope of
         Just ty => pure ty
         Nothing => case parentIndex scope of
-            Just parentScope => getVariableTypeAtScope parentScope name
+            Just parentScope => retrieveVariableTypeAtScope parentScope name
             Nothing => pure IUnknown
 
-getVariableType : String -> Asm InferredType
-getVariableType name = getVariableTypeAtScope !getCurrentScopeIndex name
+retrieveVariableType : String -> Asm InferredType
+retrieveVariableType name = retrieveVariableTypeAtScope !getCurrentScopeIndex name
 
-getVariableTypesAtScope : Int -> Asm (SortedMap Int InferredType)
-getVariableTypesAtScope scopeIndex = go SortedMap.empty !(getVariables scopeIndex) where
+retrieveVariableTypesAtScope : Int -> Asm (SortedMap Int InferredType)
+retrieveVariableTypesAtScope scopeIndex = go SortedMap.empty !(retrieveVariables scopeIndex) where
     go : SortedMap Int InferredType -> List String -> Asm (SortedMap Int InferredType)
     go acc [] = Pure acc
     go acc (var :: vars) = do
-        varIndex <- getVariableIndexAtScope scopeIndex var
-        ty <- getVariableTypeAtScope scopeIndex var
+        varIndex <- retrieveVariableIndexAtScope scopeIndex var
+        ty <- retrieveVariableTypeAtScope scopeIndex var
         case SortedMap.lookup varIndex acc of
             Nothing => go (SortedMap.insert varIndex ty acc) vars
             _ => go acc vars
 
+getVariableIndicesByName : Int -> Asm (SortedMap String Int)
+getVariableIndicesByName scopeIndex = allVariableIndices <$> getScope scopeIndex
+
+getVariables : Int -> Asm (List String)
+getVariables scopeIndex = do
+    variableIndicesByName <- getVariableIndicesByName scopeIndex
+    Pure (fst <$> sortBy comparingVariableIndices (SortedMap.toList variableIndicesByName))
+  where
+    comparingVariableIndices : (String, Int) -> (String, Int) -> Ordering
+    comparingVariableIndices (_, index1) (_, index2) = compare index1 index2
+
+getVariableIndexAtScope : Int -> String -> Asm Int
+getVariableIndexAtScope currentScopeIndex name = do
+    variableIndicesByName <- getVariableIndicesByName currentScopeIndex
+    case SortedMap.lookup name variableIndicesByName of
+        Just index => pure index
+        Nothing => Throw emptyFC ("Unknown var " ++ name ++ " at index " ++ show currentScopeIndex)
+
+getVariableIndex : String -> Asm Int
+getVariableIndex name = getVariableIndexAtScope !getCurrentScopeIndex name
+
+getVariableTypesAtScope : Int -> Asm (SortedMap Int InferredType)
+getVariableTypesAtScope scopeIndex = allVariableTypes <$> getScope scopeIndex
+
 getVariableTypes : Asm (SortedMap Int InferredType)
 getVariableTypes = getVariableTypesAtScope !getCurrentScopeIndex
+
+getVariableTypeAtScope : Int -> String -> Asm InferredType
+getVariableTypeAtScope scopeIndex name = do
+    scope <- getScope scopeIndex
+    variableIndices <- getVariableIndicesByName scopeIndex
+    case SortedMap.lookup name variableIndices of
+        Just index => do
+            variableTypes <- getVariableTypesAtScope scopeIndex
+            Pure $ fromMaybe IUnknown $ SortedMap.lookup index variableTypes
+        Nothing => Pure IUnknown
+
+getVariableType : String -> Asm InferredType
+getVariableType name = getVariableTypeAtScope !getCurrentScopeIndex name
+
+updateScopeVariableTypes : Asm ()
+updateScopeVariableTypes = go (scopeCounter !GetState - 1) where
+    go : Int -> Asm ()
+    go scopeIndex =
+        if scopeIndex < 0 then Pure ()
+        else do
+            variableTypes <- retrieveVariableTypesAtScope scopeIndex
+            variableIndices <- retrieveVariableIndicesByName scopeIndex
+            scope <- getScope scopeIndex
+            saveScope $ record {allVariableTypes = variableTypes, allVariableIndices = variableIndices} scope
+            go (scopeIndex - 1)
 
 getVariableScope : String -> Asm Scope
 getVariableScope name = go !getCurrentScopeIndex where
@@ -653,15 +710,24 @@ addVariableType var IUnknown = Pure IUnknown
 addVariableType var ty = do
     scope <- getVariableScope var
     let scopeIndex = index scope
-    existingTy <- getVariableTypeAtScope scopeIndex var
+    existingTy <- retrieveVariableTypeAtScope scopeIndex var
     let newTy = existingTy <+> ty
-    updateScope scopeIndex (record {variableTypes $= SortedMap.insert var newTy} scope)
+    saveScope $ record {variableTypes $= SortedMap.insert var newTy} scope
     Pure newTy
 
-getLambdaImplementationMethodName : String -> Asm String
+getLambdaImplementationMethodName : String -> Asm Jname
 getLambdaImplementationMethodName prefix = do
-    let declaringMethodName = methodName !getRootMethodName
-    pure $ prefix ++ "$" ++ declaringMethodName ++ "$" ++ show !freshLambdaIndex
+    lambdaIndex <- freshLambdaIndex
+    rootMethodJname <- getRootMethodName
+    let declaringMethodName = methodName rootMethodJname
+    let rootMethodClassName = className rootMethodJname
+    let lambdaClassName =
+        if lambdaIndex > 5 then rootMethodClassName ++ "$" ++ prefix
+        else rootMethodClassName
+    let lambdaMethodName =
+        if lambdaIndex > 5 then declaringMethodName ++ "$" ++ show lambdaIndex
+        else prefix ++ "$" ++ declaringMethodName ++ "$" ++ show lambdaIndex
+    Pure $ Jqualified lambdaClassName lambdaMethodName
 
 getJvmTypeDescriptor : InferredType -> String
 getJvmTypeDescriptor IByte        = "B"

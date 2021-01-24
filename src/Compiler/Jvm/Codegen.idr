@@ -749,7 +749,6 @@ mutual
             let lambdaBodyReturnType = returnType scope
             let lambdaType = getLambdaType parameterName
             let lambdaInterfaceType = getLambdaInterfaceType lambdaType lambdaBodyReturnType
-            className <- getClassName
             parameterTypes <- traverse getVariableType
                 (jvmSimpleName <$> (if parameterName == Just (UN "$jvm$thunk") then Nothing else parameterName))
             let variableTypes = SortedMap.values !(loadClosures declaringScope scope)
@@ -763,24 +762,25 @@ mutual
             let instantiatedMethodDescriptor = getMethodDescriptor $
                 MkInferredFunctionType implementationMethodReturnType $ toList parameterTypes
             let methodPrefix = if isExtracted then "extracted" else "lambda"
-            lambdaMethodName <- getLambdaImplementationMethodName methodPrefix
+            lambdaClassMethodName <- getLambdaImplementationMethodName methodPrefix
+            let lambdaMethodName = methodName lambdaClassMethodName
+            let lambdaClassName = className lambdaClassMethodName
             let interfaceMethodName = getLambdaInterfaceMethodName lambdaType
             let indy = do
-                invokeDynamic className lambdaMethodName interfaceMethodName invokeDynamicDescriptor
+                invokeDynamic lambdaClassName lambdaMethodName interfaceMethodName invokeDynamicDescriptor
                     (getSamDesc lambdaType) implementationMethodDescriptor instantiatedMethodDescriptor
                 when (lambdaReturnType /= inferredObjectType) $ asmCast lambdaInterfaceType lambdaReturnType
             let staticCall = do
-                 InvokeMethod InvokeStatic className lambdaMethodName implementationMethodDescriptor False
+                 InvokeMethod InvokeStatic lambdaClassName lambdaMethodName implementationMethodDescriptor False
                  asmCast lambdaBodyReturnType lambdaReturnType
             maybe indy (const staticCall) parameterValueExpr
             when isTailCall $
-                if isExtracted then asmReturn implementationMethodReturnType
+                if isExtracted then asmReturn lambdaReturnType
                 else asmReturn lambdaInterfaceType
             let oldLineNumberLabels = lineNumberLabels !GetState
             updateState $ record { lineNumberLabels = SortedMap.empty }
-            let accessModifiers = if isExtracted then [Private, Static]
-                else [Private, Static, Synthetic]
-            CreateMethod accessModifiers "" className lambdaMethodName implementationMethodDescriptor
+            let accessModifiers = [Public, Static]
+            CreateMethod accessModifiers "" lambdaClassName lambdaMethodName implementationMethodDescriptor
                 Nothing Nothing [] []
             MethodCodeStart
             let labelStart = methodStartLabel
@@ -854,7 +854,8 @@ mutual
     assembleMissingDefault :InferredType -> FC -> String -> Asm ()
     assembleMissingDefault returnType fc defaultLabel = do
         LabelStart defaultLabel
-        assembleExpr True returnType (NmCrash fc "Unreachable code")
+        defaultValue returnType
+        asmReturn returnType
 
     assembleConstantSwitch : (returnType: InferredType) -> (switchExprType: InferredType) -> FC ->
         NamedCExp -> List NamedConstAlt -> Maybe NamedCExp -> Asm ()
@@ -1222,7 +1223,7 @@ assembleDefinition idrisName fc def@(MkNmFun args expr) = do
         lineNumberLabels = SortedMap.empty }
     updateCurrentFunction $ record { dynamicVariableCounter = 0 }
     let optimizedExpr = optimizedBody function
-    debug $ "Assembling " ++ show idrisName ++ "(" ++ show args ++ ")"
+    debug $ "Assembling " ++ show idrisName
     CreateMethod [Public, Static] fileName declaringClassName methodName descriptor Nothing Nothing [] []
     MethodCodeStart
     CreateLabel methodStartLabel

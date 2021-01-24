@@ -123,6 +123,12 @@ boolToInt = InvokeMethod InvokeStatic conversionClass "boolToInt" "(Z)I" False
 objToInt : Asm ()
 objToInt = InvokeMethod InvokeStatic conversionClass "toInt" "(Ljava/lang/Object;)I" False
 
+objToChar : Asm ()
+objToChar = InvokeMethod InvokeStatic conversionClass "toChar" "(Ljava/lang/Object;)C" False
+
+objToBoolean : Asm ()
+objToBoolean = InvokeMethod InvokeStatic conversionClass "toBoolean" "(Ljava/lang/Object;)Z" False
+
 objToByte : Asm ()
 objToByte = InvokeMethod InvokeStatic conversionClass "toByte" "(Ljava/lang/Object;)B" False
 
@@ -161,11 +167,11 @@ asmCast IInt IShort = I2s
 asmCast IFloat IDouble = F2d
 asmCast IDouble IFloat = D2f
 
-asmCast ty IBool = if isThunkType ty then unwrapIntThunk else boolObjToBool
+asmCast ty IBool = objToBoolean
 
 asmCast ty IByte = if isThunkType ty then unwrapIntThunk else objToByte
 
-asmCast ty IChar = if isThunkType ty then unwrapIntThunk else charObjToChar
+asmCast ty IChar = objToChar
 
 asmCast ty IShort = if isThunkType ty then unwrapIntThunk else objToShort
 
@@ -258,7 +264,7 @@ loadAndUnboxByte ty sourceLocTys var =
 
 loadAndUnboxChar : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
 loadAndUnboxChar ty sourceLocTys var =
-    let loadInstr = \index => do Aload index; if ty == intThunkType then unwrapIntThunk else charObjToChar
+    let loadInstr = \index => do Aload index; if ty == intThunkType then unwrapIntThunk else objToChar
     in opWithWordSize sourceLocTys loadInstr var
 
 loadAndUnboxShort : InferredType -> SortedMap Int InferredType -> Int -> Asm ()
@@ -360,9 +366,7 @@ loadVars sourceLocTys targetLocTys vars@(_ :: _)  =
           go vs
 
 storeVarWithWordSize : (Int -> Asm ()) -> Int -> Asm ()
-storeVarWithWordSize storeOp var = do
-    types <- getVariableTypes
-    opWithWordSize types storeOp var
+storeVarWithWordSize storeOp var = opWithWordSize !getVariableTypes storeOp var
 
 boxStore : Asm () -> Int -> Asm ()
 boxStore boxOp var = storeVarWithWordSize (\index => do boxOp; Astore index) var
@@ -411,4 +415,4 @@ storeVar ty targetTy@(IRef _) var = do
     asmCast ty targetTy
     opWithWordSize types Astore var
 
-storeVar _ _ var = do types <- getVariableTypes; opWithWordSize types Astore var
+storeVar _ _ var = opWithWordSize !getVariableTypes Astore var

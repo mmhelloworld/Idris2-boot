@@ -10,7 +10,7 @@ quoted : String -> String
 quoted str = "\"" ++ str ++ "\""
 
 showObj : List (String, String) -> String
-showObj props = "{" ++ concat (intersperse "," $ go <$> props) ++ "}" where
+showObj props = "{" ++ concat (intersperse ", " $ go <$> props) ++ "}" where
     go : (String, String) -> String
     go (k, v) = "\"" ++ k ++ "\" : " ++ v
 

@@ -27,20 +27,36 @@ public final class Conversion {
         } else if (that instanceof Short) {
             return (short) that;
         } else {
-            throw new IllegalArgumentException(format("Unable to convert value %s of type (%s) to int",
+            throw new IllegalArgumentException(format("Unable to convert value %s of type %s to int",
                 that, that.getClass()));
         }
     }
 
+    public static char toChar(Object that) {
+        if (that == null) {
+            return 0;
+        } else if (that instanceof Character) {
+            return (char) that;
+        } else if (that instanceof Thunk) {
+            return (char) ((Thunk) that).getInt();
+        } else if (that instanceof Integer) {
+            return (char) (int) (Integer) that;
+        } else {
+            throw new IllegalArgumentException(format("Unable to convert value %s of type %s to char",
+                that, that.getClass()));
+        }
+    }
     public static boolean toBoolean(Object that) {
         if (that == null) {
             return false;
-        } else if (that instanceof Integer) {
-            return ((Integer) that) != 0;
         } else if (that instanceof Boolean) {
             return (Boolean) that;
+        } else if (that instanceof Thunk) {
+            return ((Thunk) that).getInt() != 0;
+        } else if (that instanceof Integer) {
+            return ((Integer) that) != 0;
         } else {
-            throw new IllegalArgumentException(format("Unable to convert value %s of type (%s) to boolean",
+            throw new IllegalArgumentException(format("Unable to convert value %s of type %s to boolean",
                 that, that.getClass()));
         }
     }
@@ -53,7 +69,7 @@ public final class Conversion {
         } else if (that instanceof Float) {
             return (float) that;
         } else {
-            throw new IllegalArgumentException(format("Unable to convert value %s of type (%s) to double",
+            throw new IllegalArgumentException(format("Unable to convert value %s of type %s to double",
                 that, that.getClass()));
         }
     }
@@ -64,7 +80,7 @@ public final class Conversion {
         } else if (that instanceof Byte) {
             return (byte) that;
         } else {
-            throw new IllegalArgumentException(format("Unable to convert value %s of type (%s) to byte",
+            throw new IllegalArgumentException(format("Unable to convert value %s of type %s to byte",
                 that, that.getClass()));
         }
     }
@@ -75,7 +91,7 @@ public final class Conversion {
         } else if (that instanceof Short) {
             return (short) that;
         } else {
-            throw new IllegalArgumentException(format("Unable to convert value %s of type (%s) to short",
+            throw new IllegalArgumentException(format("Unable to convert value %s of type %s to short",
                 that, that.getClass()));
         }
     }
@@ -86,7 +102,7 @@ public final class Conversion {
         } else if (that instanceof Float) {
             return (float) that;
         } else {
-            throw new IllegalArgumentException(format("Unable to convert value %s of type (%s) to float",
+            throw new IllegalArgumentException(format("Unable to convert value %s of type %s to float",
                 that, that.getClass()));
         }
     }

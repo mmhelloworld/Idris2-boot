@@ -338,7 +338,6 @@ public final class Assembler {
         cw = cws.computeIfAbsent(className, cname -> {
             final ClassWriter classWriter = new IdrisClassWriter(COMPUTE_MAXS + COMPUTE_FRAMES);
             classWriter.visit(52, ACC_PUBLIC, cname, null, "java/lang/Object", null);
-            createDefaultConstructor(classWriter);
             return classWriter;
         });
         fv = cw.visitField(acc, fieldName, desc, sig, value);
@@ -368,7 +367,6 @@ public final class Assembler {
             final ClassWriter classWriter = new IdrisClassWriter(COMPUTE_MAXS + COMPUTE_FRAMES);
             classWriter.visit(52, ACC_PUBLIC + ACC_FINAL, className, null, "java/lang/Object", null);
             classWriter.visitSource(sourceFile, null);
-            createDefaultConstructor(classWriter);
             return classWriter;
         });
         String[] exceptionsArr = exceptions == null ? null : exceptions.toArray(new String[0]);
@@ -1048,17 +1046,6 @@ public final class Assembler {
         requireNonNull(end, format("Line number end label '%s' for variable %s at index %d must not be null",
             lineNumberEndLabel, name, index));
         mv.visitLocalVariable(name, typeDescriptor, signature, start, end, index);
-    }
-
-    private MethodVisitor createDefaultConstructor(ClassWriter cw) {
-        MethodVisitor mv = cw.visitMethod(ACC_PRIVATE, "<init>", "()V", null, null);
-        mv.visitCode();
-        mv.visitVarInsn(ALOAD, 0);
-        mv.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
-        mv.visitInsn(RETURN);
-        mv.visitMaxs(1, 1);
-        mv.visitEnd();
-        return mv;
     }
 
     private void handleCreateMethod(MethodVisitor mv, List<Annotation> annotations,

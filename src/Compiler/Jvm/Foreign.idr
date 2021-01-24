@@ -180,9 +180,10 @@ inferForeign idrisName fc foreignDescriptors argumentTypes returnType = do
             NmPrimVal fc WorldVal])
     setCurrentFunction function
     updateState $ record { functions $= SortedMap.insert jname function }
-    let functionScope = MkScope scopeIndex Nothing argumentTypesByName argIndices jvmReturnType arity
-                            (0, 0) ("", "") []
-    updateScope scopeIndex functionScope
+    let functionScope = MkScope scopeIndex Nothing argumentTypesByName SortedMap.empty argIndices SortedMap.empty
+                            jvmReturnType arity (0, 0) ("", "") []
+    saveScope functionScope
+    updateScopeVariableTypes
   where
     getJvmExtPrimArguments : List (CFType, String, InferredType) -> NamedCExp
     getJvmExtPrimArguments [] = NmCon fc (UN "emptyForeignArg") (Just 0) []
