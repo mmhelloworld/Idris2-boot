@@ -779,7 +779,8 @@ mutual
                 else asmReturn lambdaInterfaceType
             let oldLineNumberLabels = lineNumberLabels !GetState
             updateState $ record { lineNumberLabels = SortedMap.empty }
-            let accessModifiers = [Public, Static]
+            className <- getClassName
+            let accessModifiers = if className /= lambdaClassName then [Public, Static] else [Public, Static, Synthetic]
             CreateMethod accessModifiers "" lambdaClassName lambdaMethodName implementationMethodDescriptor
                 Nothing Nothing [] []
             MethodCodeStart

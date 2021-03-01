@@ -116,6 +116,90 @@ export
 extractedMethodArgumentName : String
 extractedMethodArgumentName = "$jvm$arg"
 
+eqPrimFn : PrimFn a -> PrimFn b -> Bool
+eqPrimFn (Add a) (Add b) = a == b
+eqPrimFn (Sub a) (Sub b) = a == b
+eqPrimFn (Mul a) (Mul b) = a == b
+eqPrimFn (Div a) (Div b) = a == b
+eqPrimFn (Neg a) (Neg b) = a == b
+eqPrimFn (ShiftL a) (ShiftL b) = a == b
+eqPrimFn (ShiftR a) (ShiftR b) = a == b
+eqPrimFn (BAnd a) (BAnd b) = a == b
+eqPrimFn (BOr a) (BOr b) = a == b
+eqPrimFn (BXOr a) (BXOr b) = a == b
+eqPrimFn (LT a) (LT b) = a == b
+eqPrimFn (LTE a) (LTE b) = a == b
+eqPrimFn (EQ a) (EQ b) = a == b
+eqPrimFn (GTE a) (GTE b) = a == b
+eqPrimFn (GT a) (GT b) = a == b
+eqPrimFn StrLength StrLength = True
+eqPrimFn StrHead StrHead = True
+eqPrimFn StrTail StrTail = True
+eqPrimFn StrIndex StrIndex = True
+eqPrimFn StrCons StrCons = True
+eqPrimFn StrAppend StrAppend = True
+eqPrimFn StrReverse StrReverse = True
+eqPrimFn StrSubstr StrSubstr = True
+eqPrimFn DoubleExp  DoubleExp  = True
+eqPrimFn DoubleLog  DoubleLog  = True
+eqPrimFn DoubleSin  DoubleSin  = True
+eqPrimFn DoubleCos  DoubleCos  = True
+eqPrimFn DoubleTan  DoubleTan  = True
+eqPrimFn DoubleASin DoubleASin = True
+eqPrimFn DoubleACos DoubleACos = True
+eqPrimFn DoubleATan DoubleATan = True
+eqPrimFn DoubleSqrt DoubleSqrt = True
+eqPrimFn (Cast s1 t1) (Cast s2 t2) = s1 == s2 && t1 == t2
+eqPrimFn BelieveMe BelieveMe = True
+eqPrimFn Crash Crash = True
+eqPrimFn _ _ = False
+
+mutual
+    eqNamedCExp : NamedCExp -> NamedCExp -> Bool
+    eqNamedCExp (NmLocal fc1 x1) (NmLocal fc2 x2) = x1 == x2 && fc1 == fc2
+    eqNamedCExp (NmRef fc1 x1) (NmRef fc2 x2) = x1 == x2 && fc1 == fc2
+    eqNamedCExp (NmLam fc1 x1 y1) (NmLam fc2 x2 y2) = x1 == x2 && fc1 == fc2 && eqNamedCExp y1 y2
+    eqNamedCExp (NmLet fc1 x1 y1 z1) (NmLet fc2 x2 y2 z2) =
+        fc1 == fc2 && x1 == x2 && eqNamedCExp y1 y2 && eqNamedCExp z1 z2
+    eqNamedCExp (NmApp fc1 x1 xs1) (NmApp fc2 x2 xs2) = fc1 == fc2 && eqNamedCExp x1 x2 && eqNamedCExpArgs xs1 xs2
+    eqNamedCExp (NmCon fc1 x1 tag1 xs1) (NmCon fc2 x2 tag2 xs2) = fc1 == fc2 && x1 == x2 && tag1 == tag2 &&
+        eqNamedCExpArgs xs1 xs2
+    eqNamedCExp (NmOp fc1 op1 xs1) (NmOp fc2 op2 xs2) = fc1 == fc2 && eqPrimFn op1 op2 &&
+        eqNamedCExpArgs (toList xs1) (toList xs2)
+    eqNamedCExp (NmExtPrim fc1 p1 xs1) (NmExtPrim fc2 p2 xs2) = fc1 == fc2 && p1 == p2 && eqNamedCExpArgs xs1 xs2
+    eqNamedCExp (NmForce fc1 x1) (NmForce fc2 x2) = fc1 == fc2 && eqNamedCExp x1 x2
+    eqNamedCExp (NmDelay fc1 x1) (NmDelay fc2 x2) = fc1 == fc2 && eqNamedCExp x1 x2
+    eqNamedCExp (NmConCase fc1 sc1 xs1 def1) (NmConCase fc2 sc2 xs2 def2) =
+        fc1 == fc2 && eqNamedCExp sc1 sc2 && eqNamedCExpMaybe def1 def2 && eqNamedConAlts xs1 xs2
+    eqNamedCExp (NmConstCase fc1 sc1 xs1 def1) (NmConstCase fc2 sc2 xs2 def2) =
+        fc1 == fc2 && eqNamedCExp sc1 sc2 && eqNamedConstAlts xs1 xs2 && eqNamedCExpMaybe def1 def2
+    eqNamedCExp (NmPrimVal fc1 x1) (NmPrimVal fc2 x2) = fc1 == fc2 && x1 == x2
+    eqNamedCExp (NmErased fc1) (NmErased fc2) = fc1 == fc2
+    eqNamedCExp (NmCrash fc1 x1) (NmCrash fc2 x2) = fc1 == fc2 && x1 == x2
+    eqNamedCExp _ _ = False
+
+    eqNamedCExpArgs : List NamedCExp -> List NamedCExp -> Bool
+    eqNamedCExpArgs [] [] = True
+    eqNamedCExpArgs (x :: xs) (y :: ys) = eqNamedCExp x y && eqNamedCExpArgs xs ys
+    eqNamedCExpArgs _ _ = False
+
+    eqNamedCExpMaybe : Maybe NamedCExp -> Maybe NamedCExp -> Bool
+    eqNamedCExpMaybe Nothing Nothing = True
+    eqNamedCExpMaybe (Just e1) (Just e2) = eqNamedCExp e1 e2
+    eqNamedCExpMaybe _ _ = False
+
+    eqNamedConAlts : List NamedConAlt -> List NamedConAlt-> Bool
+    eqNamedConAlts [] [] = True
+    eqNamedConAlts ((MkNConAlt x1 tag1 args1 exp1) :: alts1) ((MkNConAlt x2 tag2 args2 exp2) :: alts2) =
+        x1 == x2 && tag1 == tag2 && args1 == args2 && eqNamedCExp exp1 exp2 && eqNamedConAlts alts1 alts2
+    eqNamedConAlts _ _ = False
+
+    eqNamedConstAlts : List NamedConstAlt -> List NamedConstAlt -> Bool
+    eqNamedConstAlts [] [] = True
+    eqNamedConstAlts ((MkNConstAlt x1 exp1) :: alts1) ((MkNConstAlt x2 exp2) :: alts2) =
+        x1 == x2 && eqNamedCExp exp1 exp2 && eqNamedConstAlts alts1 alts2
+    eqNamedConstAlts _ _ = False
+
 mutual
     liftToLambda : (isTailPosition: Bool) -> NamedCExp -> NamedCExp
     liftToLambda False (NmLet fc var value sc) = NmApp fc (NmLam fc var sc) [value]
